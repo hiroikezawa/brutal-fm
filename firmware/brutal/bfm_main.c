@@ -380,6 +380,7 @@ static void fm1_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt;
+    fm1_cpu1_halt();                          /* (Felucca's order: before anything reads or clears RAM) */
     fm1_time_init();
     fm1_reset_reason();
     p3 = fm1_boot.p3_rst;

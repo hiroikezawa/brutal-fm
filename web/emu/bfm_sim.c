@@ -89,12 +89,13 @@ static uint32_t ui_now(void) { return sim_ms; }
 #include "bfm_ui.c"
 
 /* ------------------------------------------------------------- the loop --- */
+#define EXPORT __attribute__((used, visibility("default")))
 static uint32_t sim_samples, sim_next_frame;
 static uint32_t sim_master_q15 = 26000;
 static int32_t sim_out[2 * BFM_CTL * 8];
 static int16_t sim_pcm[2 * 4096];
 
-int sim_boot(void)
+EXPORT int sim_boot(void)
 {
     uint32_t pr = 0;
     bfm_patch_t p;
@@ -121,7 +122,7 @@ int sim_boot(void)
 }
 
 /* n stereo frames (<= 4096) into sim_pcm (int16 interleaved); the main loop's frames as the clock passes */
-int16_t *sim_render(uint32_t n)
+EXPORT int16_t *sim_render(uint32_t n)
 {
     uint32_t done = 0, i;
     if (n > 4096u)
@@ -146,23 +147,39 @@ int16_t *sim_render(uint32_t n)
     return sim_pcm;
 }
 
-void sim_frame(void) { ui_frame(); }
-void sim_button(uint32_t b, uint32_t down) { ui_button(b, down); }
-void sim_encoder(uint32_t e, int32_t steps) { ui_encoder(e, steps); }
-void sim_key(uint32_t k, uint32_t down) { ui_note_key(k, down); }
-void sim_master(uint32_t q15) { sim_master_q15 = bfm_master_q15 = q15 > 32767u ? 32767u : q15; }
-void sim_midi(uint32_t st, uint32_t d1, uint32_t d2)    /* a MIDI message from the page's Web MIDI input */
+EXPORT void sim_frame(void) { ui_frame(); }
+EXPORT void sim_button(uint32_t b, uint32_t down) { ui_button(b, down); }
+EXPORT void sim_encoder(uint32_t e, int32_t steps) { ui_encoder(e, steps); }
+EXPORT void sim_key(uint32_t k, uint32_t down) { ui_note_key(k, down); }
+EXPORT void sim_master(uint32_t q15) { sim_master_q15 = bfm_master_q15 = q15 > 32767u ? 32767u : q15; }
+EXPORT void sim_midi(uint32_t st, uint32_t d1, uint32_t d2)    /* a MIDI message from the page's Web MIDI input */
 {
     uint32_t cin = st >= 0xF8u ? 0xFu : st >> 4;
     sq_midi(cin | st << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24);
 }
-void sim_advance_ms(uint32_t ms) { sim_ms += ms; }
-uint16_t *sim_screen(void) { return sim_fb; }
-uint32_t sim_screen_draws(void) { return sim_draws; }
-uint8_t *sim_leds(void) { return ui_led; }
-uint8_t *sim_nor_ptr(void) { return sim_nor; }
-uint32_t sim_nor_size(void) { return sizeof sim_nor; }
-void sim_nor_erase(void) { memset(sim_nor, 0xFF, sizeof sim_nor); }
-uint32_t sim_flash_writes_count(void) { return sim_flash_writes; }
-uint32_t sim_sample_rate(void) { return BFM_FS; }
-uint32_t sim_now_ms(void) { return sim_ms; }
+EXPORT void sim_advance_ms(uint32_t ms) { sim_ms += ms; }
+EXPORT uint16_t *sim_screen(void) { return sim_fb; }
+EXPORT uint32_t sim_screen_draws(void) { return sim_draws; }
+EXPORT uint8_t *sim_leds(void) { return ui_led; }
+EXPORT uint8_t *sim_nor_ptr(void) { return sim_nor; }
+EXPORT uint32_t sim_nor_size(void) { return sizeof sim_nor; }
+EXPORT void sim_nor_erase(void) { memset(sim_nor, 0xFF, sizeof sim_nor); }
+EXPORT uint32_t sim_flash_writes_count(void) { return sim_flash_writes; }
+EXPORT uint32_t sim_sample_rate(void) { return BFM_FS; }
+EXPORT uint32_t sim_now_ms(void) { return sim_ms; }
+
+/* the browser's AudioWorklet wants two float channels */
+static float sim_l[4096], sim_r[4096];
+EXPORT void sim_render_f(uint32_t n)
+{
+    uint32_t i;
+    const int16_t *p = sim_render(n);
+    for (i = 0; i < n && i < 4096u; i++) {
+        sim_l[i] = p[2u * i] * (1.0f / 32768.0f);
+        sim_r[i] = p[2u * i + 1u] * (1.0f / 32768.0f);
+    }
+}
+EXPORT float *sim_out_l(void) { return sim_l; }
+EXPORT float *sim_out_r(void) { return sim_r; }
+EXPORT uint32_t sim_cpu_meter(void) { return (uint32_t)bm.peak; }
+EXPORT void sim_cpu_set(uint32_t q8) { ui.cpu_q8 = (uint16_t)q8; }

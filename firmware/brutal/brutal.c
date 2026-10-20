@@ -22,6 +22,9 @@
 #define FELUCCA_UART 1           /* TRS MIDI IN */
 #define FELUCCA_CPU2 0           /* one core: the second core's start-up stays Felucca's beta, not used here */
 #define FM1_CPU1_USED 0
+#define FM1_CPU1_HALT 1          /* ..but every reset (and our own boot) holds core 1 (hal/fm1_sys.h fm1_cpu1_halt,
+                                  * registers only): a firmware before this one may have left it running, and its
+                                  * waiting loop lives in the RAM this boot clears */
 #ifndef FELUCCA_ID
 #define FELUCCA_ID "FM-1_700"    /* package identity (build.py): BRUTAL FM's own number range, 7XY */
 #endif

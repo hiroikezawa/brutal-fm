@@ -47,7 +47,12 @@ static uint32_t fm1_p33_timeouts;
 #ifndef FM1_CPU1_USED
 #define FM1_CPU1_USED 0
 #endif
-#if FM1_CPU1_USED
+/* BRUTAL FM (C) 2026 Hiro Ikezawa: FM1_CPU1_HALT builds only the hold (fm1_cpu1_halt and FM1_RESET_PREP) for a
+ * one-core firmware that still holds core 1 at its boot and at every reset; FM1_CPU1_USED implies it */
+#ifndef FM1_CPU1_HALT
+#define FM1_CPU1_HALT FM1_CPU1_USED
+#endif
+#if FM1_CPU1_HALT
 #define FM1_C1_CON (*(volatile uint32_t *)0x1EEE004u)
 #define FM1__DBG_WR_EN (*(volatile uint32_t *)0x1EEE240u)  /* (fm1_irq.h FM1_DBG_*: this header comes first) */
 #define FM1__DBG_MSG_CLR (*(volatile uint32_t *)0x1EEE248u)
