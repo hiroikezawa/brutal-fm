@@ -43,7 +43,7 @@ static uint32_t bfm_patch_sanitize(bfm_patch_t *p)
         bfm_sound_t *s = &p->s[k];
         for (i = 0; i < BFM_NOP; i++)
             CL(s->ratio[i], BFM_NRATIO - 1u);
-        for (b = s->fine; b < s->rsv; b++)
+        for (b = s->fine; b < s->neg; b++)
             if (b < s->ratio || b >= s->ratio + BFM_NOP)
                 CL(*b, 127u);
     }

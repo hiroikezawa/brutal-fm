@@ -107,6 +107,17 @@ int main(int argc, char **argv)
         CHECK(ui.target == 2 && bfm_p.s[0].level[1] == bfm_p.s[1].level[1], "SCL again: A + B together");
         tap(B_SCL);
     }
+    ui_page_to(10);                                        /* OP4 MODULATES */
+    {
+        uint32_t i0, m0 = bfm_p.s[0].mat[3 * 4 + 2];
+        for (i0 = 0; i0 < m0 + 5u; i0++)
+            sim_encoder(EN_K3, -1);                         /* OP4 > OP3 down through zero */
+        CHECK(bfm_p.s[0].mat[14] == 5 && (bfm_p.s[0].neg[1] & (1u << 6)) && prm_get(P_MAT + 2) == -5,
+              "a matrix knob turned down through zero: -5 (polarity bit set)");
+        sim_encoder(EN_ALGO, 1);
+        sim_encoder(EN_ALGO, -1);
+        CHECK(!bfm_p.s[0].neg[0] && !bfm_p.s[0].neg[1], "ALGORITHM writes a positive template");
+    }
     sim_encoder(EN_ALGO, 3);
     CHECK(bfm_p.algo == (BFM_FACTORY[0].algo + 3) % BFM_NALGO &&
           !memcmp(bfm_p.s[0].mat, BFM_ALGO_MAT[bfm_p.algo], 16), "ALGORITHM writes its template into the matrix");

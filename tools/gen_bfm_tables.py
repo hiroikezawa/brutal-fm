@@ -91,6 +91,8 @@ def main():
                                           for i in range(128)], 8)
     L += arr("BFM_LFO_INC", "uint32_t", [round((2 ** 32) * (0.02 * (40 / 0.02) ** (i / 127)) * CTL / FS)
                                           for i in range(128)], 8)
+    # sound GAIN: 100 = 0 dB, 0.375 dB a step (127 = +10 dB, 0 = -37.5 dB), Q12
+    L += arr("BFM_GAIN", "uint16_t", [round(4096 * 10 ** ((i - 100) * 0.375 / 20)) for i in range(128)])
     # what the UI shows for the curves above (tenths of ms, tenths of Hz): no float on the device
     L += arr("BFM_ATK_SHOW", "uint32_t", [round(10 * 0.3 * (12000 / 0.3) ** (i / 127)) for i in range(128)], 8)
     L += arr("BFM_DEC_SHOW", "uint32_t", [round(10 * 1.0 * (30000 / 1.0) ** (i / 127)) for i in range(128)], 8)

@@ -35,7 +35,7 @@ typedef struct {
     uint8_t fold, sym, bias, fmix;    /* wavefolder: amount, symmetry (64 = even), bias (64 = 0), dry/wet */
     uint8_t character;           /* the mode's own control (METAL spread, GROWL body, CHAOS nonlinearity, NOISE) */
     uint8_t gain;                /* level trim (100 = 0 dB) */
-    uint8_t rsv[2];
+    uint8_t neg[2];              /* modulation polarity: bit e (of neg[e / 8]) set = matrix entry e subtracts */
 } bfm_sound_t;
 
 /* one ARP step: the generator writes all of it; playback only reads */

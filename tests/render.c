@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 #define SR BFM_FS
-static int16_t W[2 * SR * 12];
+static int16_t W[2 * SR * 40];
 
 typedef struct { double peak_db, rms_db, dc, centroid, flat, hf; } stats_t;
 
@@ -137,6 +137,93 @@ static uint32_t phrase(uint32_t p)              /* the test phrase of a preset; 
     return f;
 }
 
+/* ------------------------------------------------------------------ demos --- */
+static void put(const char *dir, const char *name, uint32_t frames)
+{
+    char path[512];
+    stats_t st = analyse(W, frames);
+    snprintf(path, sizeof path, "%s/%s.wav", dir, name);
+    wav_write(path, W, frames);
+    printf("demo %-26s %5.1f s  peak %5.1f dB  rms %5.1f dB  centroid %5.0f Hz\n", name, (double)frames / SR,
+           st.peak_db, st.rms_db, st.centroid);
+}
+static uint32_t at;
+static void rec(uint32_t frames) { host_render(W + 2 * at, frames); at += frames; }
+static void chord(const uint8_t *n, uint32_t k, uint32_t down) { uint32_t i; for (i = 0; i < k; i++) bfm_key_push(n[i], 100, down); }
+
+static void demos(const char *dir)
+{
+    static const uint8_t CH[4] = {48, 51, 55, 58};          /* C3 Eb3 G3 Bb3 */
+    static const uint8_t CH2[4] = {46, 50, 53, 57};         /* Bb2 D3 F3 A3 */
+    uint32_t loop16 = SR * 2, k;                            /* 16 steps of 16ths at 120 BPM */
+    /* 8 and 16 steps */
+    host_init(); host_load(23); host_render(0, 64);
+    bfm_p.arp.length = 0; at = 0;
+    chord(CH, 4, 1); rec(loop16 / 2 * 6); chord(CH, 4, 0); rec(SR / 2);
+    put(dir, "arp_8step_chaos", at);
+    host_init(); host_load(23); host_render(0, 64);
+    at = 0; chord(CH, 4, 1); rec(loop16 * 4); chord(CH, 4, 0); rec(SR / 2);
+    put(dir, "arp_16step_chaos", at);
+    /* REGENERATE every two loops (HOLD), a new pattern of the same four notes each time */
+    host_init(); host_load(3); host_render(0, 64);
+    bfm_p.arp.hold = 1; at = 0;
+    chord(CH, 4, 1); rec(SR / 10); chord(CH, 4, 0);
+    for (k = 0; k < 4u; k++) { rec(loop16 * 2 - (k ? 0 : SR / 10)); rq_regen = 1; }
+    rec(loop16 * 2);
+    put(dir, "arp_regenerate_gamelan", at);
+    /* RHYTHM LOCK: the rhythm stays, the notes and the timbre change */
+    host_init(); host_load(12); host_render(0, 64);
+    bfm_p.arp.hold = 1; bfm_p.arp.locks = LK_RHYTHM; at = 0;
+    chord(CH, 4, 1); rec(SR / 10); chord(CH, 4, 0);
+    for (k = 0; k < 3u; k++) { rec(loop16 * 2 - (k ? 0 : SR / 10)); rq_regen = 1; }
+    rec(loop16 * 2);
+    put(dir, "arp_rhythm_lock_acid", at);
+    /* FREEZE: the chord changes, the pattern's shape stays */
+    host_init(); host_load(7); host_render(0, 64);
+    bfm_p.arp.locks = LK_FREEZE; at = 0;
+    chord(CH, 4, 1); rec(loop16 * 2); chord(CH, 4, 0); chord(CH2, 4, 1); rec(loop16 * 3); chord(CH2, 4, 0);
+    rec(SR / 2);
+    put(dir, "arp_freeze_chord_change", at);
+    /* a chord change without FREEZE: a new pattern at the loop boundary */
+    host_init(); host_load(28); host_render(0, 64);
+    at = 0;
+    chord(CH, 4, 1); rec(loop16 * 2 + SR / 3); chord(CH, 4, 0); chord(CH2, 4, 1); rec(loop16 * 3); chord(CH2, 4, 0);
+    rec(SR / 2);
+    put(dir, "arp_chord_change_boundary", at);
+    /* MORPH sweeps */
+    {
+        static const uint32_t PR[3] = {0, 18, 32};
+        static const char *const NM[3] = {"morph_rust_bell", "morph_crossfire", "morph_iron_drone"};
+        for (k = 0; k < 3u; k++) {
+            uint32_t m;
+            host_init(); host_load(PR[k]); host_render(0, 64);
+            bfm_p.arp.on = 0; at = 0;
+            chord(CH, PR[k] == 18 ? 1 : 3, 1);
+            for (m = 0; m < 128; m++) { bfm_p.morph = (uint8_t)m; rec(SR * 4 / 128); }
+            for (m = 128; m-- > 0;) { bfm_p.morph = (uint8_t)m; rec(SR * 2 / 128); }
+            chord(CH, PR[k] == 18 ? 1 : 3, 0); rec(SR);
+            put(dir, NM[k], at);
+        }
+    }
+    /* the four modes on one patch: METAL GROWL CHAOS NOISE */
+    host_init(); host_load(0); host_render(0, 64);
+    bfm_p.arp.on = 0; at = 0;
+    for (k = 0; k < 4u; k++) {
+        uint32_t i;
+        bfm_p.mode = (uint8_t)k;
+        for (i = 0; i < 2u; i++) { bfm_p.s[i].character = 90; bfm_p.s[i].sus[0] = 110; }
+        bfm_key_push(36, 110, 1); rec(SR * 3 / 2); bfm_key_push(36, 0, 0); rec(SR / 2);
+    }
+    put(dir, "modes_metal_growl_chaos_noise", at);
+    /* INTENSITY and FEEDBACK swept on a held bass: pitched to noise */
+    host_init(); host_load(13); host_render(0, 64);
+    bfm_p.arp.on = 0; at = 0;
+    bfm_key_push(36, 110, 1);
+    for (k = 0; k < 128; k++) { bfm_p.intensity = (uint8_t)k; bfm_p.feedback = (uint8_t)k; rec(SR * 6 / 128); }
+    bfm_key_push(36, 0, 0); rec(SR);
+    put(dir, "sweep_pitched_to_noise_diesel", at);
+}
+
 int main(int argc, char **argv)
 {
     const char *dir = argc > 1 ? argv[1] : "build/wav";
@@ -145,6 +232,10 @@ int main(int argc, char **argv)
     char path[512];
     mkdir(dir, 0755);
     host_init();
+    if (only == -2) {
+        demos(dir);
+        return 0;
+    }
     printf("%-3s %-12s %-6s %7s %7s %8s %9s %6s %7s\n", "#", "NAME", "MODE", "PEAK", "RMS", "DC", "CENTROID", "FLAT",
            ">16k");
     for (p = 0; p < BFM_NFACTORY; p++) {

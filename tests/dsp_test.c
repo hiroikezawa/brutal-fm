@@ -274,6 +274,103 @@ static double alias_run(uint32_t q, uint32_t fold, uint32_t inten, uint32_t note
     return inharmonic(W + 2 * SR / 2, 8192, 440.0 * pow(2, ((double)note - 69) / 12.0));
 }
 
+static void polarity(void)
+{
+    static const uint8_t N[1] = {48};
+    sig_t pos, neg;
+    int16_t *a = W, *b = W + 2 * SR;
+    uint32_t i, diff = 0;
+    printf("== modulation polarity: a negative amount is another sound, morphing through zero is smooth\n");
+    host_init();
+    bfm_p = BFM_FACTORY[0];
+    bfm_p.arp.on = 0;
+    bfm_p.movement = 0;
+    bfm_p.dly_mix = 0;
+    memset(bfm_p.s[0].neg, 0, 2);
+    bfm_p.s[1] = bfm_p.s[0];
+    notes_on(N, 1);
+    host_render(a, SR / 2);
+    host_init();
+    {
+        bfm_patch_t keep = bfm_p;
+        bfm_p = keep;
+    }
+    bfm_p.s[0].neg[0] = 0xFF;
+    bfm_p.s[0].neg[1] = 0xFF;
+    bfm_p.s[1] = bfm_p.s[0];
+    notes_on(N, 1);
+    host_render(b, SR / 2);
+    for (i = 0; i < SR; i++)
+        diff += a[i] != b[i];
+    pos = sig(a, SR / 2);
+    neg = sig(b, SR / 2);
+    CHECK(diff > SR / 2 && neg.peak > 1000, "every matrix entry negative: a different waveform (%u of %u samples differ), "
+          "still sounding (peak %d against %d)", diff, SR, neg.peak, pos.peak);
+    {   /* A positive, B negative: MORPH sweeps through zero modulation, no click */
+        sig_t m;
+        host_init();
+        bfm_p = BFM_FACTORY[0];
+        bfm_p.arp.on = 0;
+        bfm_p.movement = 0;
+        bfm_p.dly_mix = 0;
+        bfm_p.s[1] = bfm_p.s[0];
+        memset(bfm_p.s[0].neg, 0, 2);
+        bfm_p.s[1].neg[0] = bfm_p.s[1].neg[1] = 0xFF;
+        memset(bfm_p.s[0].sus, 120, 4);
+        memset(bfm_p.s[1].sus, 120, 4);
+        notes_on(N, 1);
+        host_render(W, SR / 2);
+        for (i = 0; i < 128u; i++) {
+            bfm_p.morph = (uint8_t)i;
+            host_render(W + 2u * i * 256u, 256);
+        }
+        m = sig(W, 128 * 256);
+        CHECK(m.wraps == 0, "MORPH from +amounts to -amounts: no wrap-around click (largest step %d)", m.jump);
+    }
+}
+
+static void morph_loudness(void)
+{
+    static const uint8_t N[1] = {48};
+    uint32_t p, checked = 0, bad = 0;
+    double worst = 0;
+    const char *wn = "";
+    printf("== MORPH keeps the level: every sustained preset swept 0 -> 127 over 2 s\n");
+    for (p = 0; p < BFM_NFACTORY; p++) {
+        uint32_t k, w, ok = 1;
+        double last = 0, jump = 0;
+        for (k = 0; k < 4u; k++)
+            ok &= (BFM_FACTORY[p].s[0].sus[k] >= 90 || !BFM_FACTORY[p].s[0].out[k]) &&
+                  (BFM_FACTORY[p].s[1].sus[k] >= 90 || !BFM_FACTORY[p].s[1].out[k]);
+        if (!ok || BFM_FACTORY[p].s[0].atk[0] > 40)
+            continue;                               /* decaying or slow sounds change level by themselves */
+        host_init();
+        bfm_p = BFM_FACTORY[p];
+        bfm_p.arp.on = 0;
+        bfm_p.movement = 0;
+        bfm_p.dly_mix = 0;
+        notes_on(N, 1);
+        host_render(W, SR / 4);
+        for (w = 0; w < 40u; w++) {                  /* 40 windows of 50 ms, MORPH up a step each 1/64 */
+            sig_t g;
+            bfm_p.morph = (uint8_t)(w * 127u / 39u);
+            host_render(W, SR / 20);
+            g = sig(W, SR / 20);
+            {
+                double db = 20 * log10(g.rms + 1e-9);
+                if (w && fabs(db - last) > jump)
+                    jump = fabs(db - last);
+                last = db;
+            }
+        }
+        checked++;
+        if (jump > worst) { worst = jump; wn = BFM_FACTORY[p].name; }
+        bad += jump > 6.0;
+    }
+    CHECK(checked >= 10 && !bad, "%u sustained presets: the level never jumps more than 6 dB between 50 ms windows "
+          "(largest %.1f dB, %s)", checked, worst, wn);
+}
+
 static void aliasing(void)
 {
     static const uint32_t NOTES[3] = {72, 84, 96};
@@ -353,6 +450,8 @@ int main(void)
     random_patches();
     silence();
     morph_clicks();
+    polarity();
+    morph_loudness();
     aliasing();
     long_run();
     cost();

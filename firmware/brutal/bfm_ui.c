@@ -247,9 +247,13 @@ static int32_t prm_get(uint32_t id)
     case W_PATCH: return ((const uint8_t *)&bfm_p)[d->off];
     case W_SND: {
         uint32_t off = d->off + (d->perop ? pg->op : 0u);
-        if (d->fmt == F_MAT)
-            off += pg->op * BFM_NOP;
-        return ((const uint8_t *)ui_snd(ui.target == 1u))[off];
+        const bfm_sound_t *sn = ui_snd(ui.target == 1u);
+        if (d->fmt == F_MAT) {                            /* -127..127: the polarity bit gives the sign */
+            uint32_t e = pg->op * BFM_NOP + (uint32_t)(id - P_MAT);
+            int32_t m = sn->mat[e];
+            return (sn->neg[e >> 3] & (1u << (e & 7u))) ? -m : m;
+        }
+        return ((const uint8_t *)sn)[off];
     }
     case W_SET: return ((const uint8_t *)&bfm_set)[d->off];
     case W_LOCK: return (bfm_p.arp.locks & d->off) != 0u;
@@ -312,6 +316,23 @@ static void prm_set(uint32_t id, int32_t v)
 {
     const prm_t *d = &PRM[id];
     const page_t *pg = ui_pg();
+    if (d->fmt == F_MAT) {                                /* a matrix amount: -127..127 */
+        uint32_t e = pg->op * BFM_NOP + (uint32_t)(id - P_MAT), k;
+        v = v < -127 ? -127 : v > 127 ? 127 : v;
+        for (k = 0; k < 2u; k++) {
+            bfm_sound_t *sn = ui_snd(k);
+            if ((k == 0u && ui.target == 1u) || (k == 1u && ui.target == 0u))
+                continue;
+            sn->mat[e] = (uint8_t)(v < 0 ? -v : v);
+            if (v < 0)
+                sn->neg[e >> 3] |= (uint8_t)(1u << (e & 7u));
+            else
+                sn->neg[e >> 3] &= (uint8_t)~(1u << (e & 7u));
+        }
+        ui.modified = 1;
+        ui.dirty |= 3;
+        return;
+    }
     if (d->where != W_SPEC && d->where != W_NONE) {
         if (v < d->lo) v = d->lo;
         if (v > d->hi) v = d->hi;
@@ -578,7 +599,9 @@ static void prm_str(uint32_t id, char *b)
         if (!v) {
             str_cat(b, "-", 12);
         } else {
-            u2s(t, (uint32_t)v);
+            if (v < 0)
+                str_cat(b, "-", 12);
+            u2s(t, (uint32_t)(v < 0 ? -v : v));
             str_cat(b, t, 12);
         }
         break;
@@ -622,7 +645,9 @@ static int32_t prm_bar(uint32_t id, int *bip)
 {
     const prm_t *d = &PRM[id];
     int32_t v = prm_get(id);
-    *bip = d->fmt == F_BIP || d->fmt == F_FINE || (d->where == W_SPEC && d->off == SP_SFM);
+    *bip = d->fmt == F_BIP || d->fmt == F_FINE || d->fmt == F_MAT || (d->where == W_SPEC && d->off == SP_SFM);
+    if (d->fmt == F_MAT)
+        return (v + 127) * 1000 / 254;
     if (d->where == W_SPEC) {
         switch (d->off) {
         case SP_BPM: return (v - 40) * 1000 / 215;
@@ -877,6 +902,8 @@ static void ui_encoder(uint32_t e, int32_t steps)
             ui_sound_set(__builtin_offsetof(bfm_sound_t, mat) + k, BFM_ALGO_MAT[a][k]);
         for (k = 0; k < 4u; k++)
             ui_sound_set(__builtin_offsetof(bfm_sound_t, out) + k, BFM_ALGO_OUT[a][k]);
+        for (k = 0; k < 2u; k++)                          /* a template is all positive */
+            ui_sound_set(__builtin_offsetof(bfm_sound_t, neg) + k, 0);
         ui_popup("ALGORITHM", BFM_ALGO_NAME[a]);
         ui.modified = 1;
         ui.dirty |= 3;
@@ -1133,11 +1160,13 @@ static void draw_bottom(uint32_t now)
             uint32_t src = 3u - r;
             cv_text(8, 4 + (int32_t)r * 20, &AF_S, t, pg->view == V_MAT && pg->op == src ? T_ACCENT : T_MID);
             for (c = 0; c < 4u; c++) {
-                uint32_t v = s->mat[src * 4u + c];
+                uint32_t e = src * 4u + c, v = s->mat[e], neg = (s->neg[e >> 3] >> (e & 7u)) & 1u;
                 int32_t x = 48 + (int32_t)c * 30, y = 2 + (int32_t)r * 20, sz = (int32_t)v * 16 / 127;
                 cv_rect(x, y, 18, 18, src == c ? T_TINT : T_SURF);
                 if (sz)
-                    cv_rect(x + 9 - sz / 2, y + 9 - sz / 2, sz + 1, sz + 1, src == c ? T_ACCENT : T_THEME);
+                    cv_rect(x + 9 - sz / 2, y + 9 - sz / 2, sz + 1, sz + 1, neg ? T_MID : src == c ? T_ACCENT : T_THEME);
+                if (sz && neg)
+                    cv_rect(x + 4, y + 8, 10, 2, T_BG);       /* a minus through a negative amount */
             }
             {   /* ratio, out */
                 char v[12];

@@ -29,6 +29,7 @@
 typedef struct {
     uint8_t active, gate, note, vel, acc;
     uint8_t kill;                /* stolen: fades over one block, then stops */
+    uint8_t fresh;               /* started this block: the matrix amounts are taken, not slewed to */
     int8_t fm_off, fb_off, morph_off;   /* ARP step timbre */
     uint32_t age;
     int32_t pitch, pitch_to;     /* Q12 octaves from MIDI note 0 (glide slews pitch to pitch_to) */
@@ -157,8 +158,7 @@ static void bfm_voice_start(bfm_voice_t *v, uint32_t note, uint32_t vel, int leg
         }
     }
     if (!v->active) {
-        for (j = 0; j < BFM_NOP * BFM_NOP; j++)
-            v->amt[j] = -1;                          /* first block: no slew from zero */
+        v->fresh = 1;                                /* first block: the matrix as it is, no slew from zero */
         v->vout = 0;
         v->pbody = 0;
         v->gain = 0;
@@ -405,7 +405,7 @@ static inline __attribute__((always_inline)) void bfm_kernel_body(bfm_kern_t *K,
             b = (bfm_sin(K->pbody) + bfm_sin(K->pbody << 1)) >> 1;
             out += (((b * (K->body >> 7)) >> 8) * K->amp[0]) >> 15;
         }
-        acc[s] += (out * (K->gain >> 4)) >> 11;          /* (|out| < 2^18, gain < 2^16: 32-bit) */
+        acc[s] += (out * (K->gain >> 5)) >> 10;          /* (|out| < 2^18, gain < 2^17: 32-bit) */
         K->gain += K->dgain;
     }
 }
@@ -492,24 +492,36 @@ static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, 
     for (k = 0; k < BFM_NOP; k++)                        /* src */
         for (j = 0; j < BFM_NOP; j++) {                  /* dst */
             uint32_t e = k * BFM_NOP + j;
-            int32_t t = bfm_lerp(BFM_MODAMT[A->mat[e] & 127u], BFM_MODAMT[B->mat[e] & 127u], mq);
+            int32_t ta = BFM_MODAMT[A->mat[e] & 127u], tb = BFM_MODAMT[B->mat[e] & 127u], t;
+            if (A->neg[e >> 3] & (1u << (e & 7u)))
+                ta = -ta;                                /* polarity: a negative amount (A and B may differ: */
+            if (B->neg[e >> 3] & (1u << (e & 7u)))
+                tb = -tb;                                /* MORPH then passes through zero, no jump) */
+            t = bfm_lerp(ta, tb, mq);
             t = (int32_t)(((int64_t)t * (k > j ? si : sf)) >> 12);
             if (mode == MODE_CHAOS && k <= j)
                 t += t >> 1;                             /* CHAOS: cross paths 1.5x */
-            t = bfm_clamp(t, 0, 65535);
-            if (v->amt[e] < 0)
-                v->amt[e] = t;
-            else
+            t = bfm_clamp(t, -65535, 65535);
+            if (!v->fresh)
                 v->amt[e] += (t - v->amt[e]) / 4;
-            if (v->amt[e] >= 16) {                       /* below 1/256 cycle: nothing */
+            else
+                v->amt[e] = t;
+            if (v->amt[e] >= 16 || v->amt[e] <= -16) {   /* below 1/256 cycle: nothing */
                 uint32_t q = K.ne[j]++;
                 K.src[j][q] = k > j ? &K.cur[k] : k < j ? &K.y1[k] : &K.fb[k];
                 K.bend[j][q] = (uint8_t)(k <= j);
-                K.amt[j][q] = v->amt[e] >> 4;            /* Q8 cycles: x Q15 fits int32 with 4 edges */
+                K.amt[j][q] = v->amt[e] / 16;            /* Q8 cycles: x Q15 fits int32 with 4 edges */
             }
         }
+    v->fresh = 0;
     /* folder and mode extras */
-    fold_g = 256 + bfm_clamp(bfm_lerp(A->fold, B->fold, mq) + g->fold_mod, 0, 127) * 14;   /* Q8: 1 .. 8 */
+    {   /* the folder's gain, less the higher the note above A4 (to 20 % five octaves up): a fold multiplies the
+         * partials, and high notes would alias (after Felucca's PHASE FOLD) */
+        int32_t f = bfm_clamp(bfm_lerp(A->fold, B->fold, mq) + g->fold_mod, 0, 127), up = (int32_t)v->note - 69;
+        if (up > 0)
+            f = f * bfm_clamp(60 - up, 12, 60) / 60;
+        fold_g = 256 + f * 14;                           /* Q8: 1 .. 8 */
+    }
     {
         int32_t sy = bfm_lerp(A->sym, B->sym, mq);       /* 64: even; 0 / 127: one side squashed or boosted */
         sym_n = 256 + (64 - sy) * 3;                     /* the negative half's gain, Q8 */
@@ -531,8 +543,8 @@ static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, 
     /* the output gain: velocity, the sound's gain, the steal fade */
     {
         int32_t vs = bfm_p.vel_sens, vg = 32768 - (((127 - (int32_t)v->vel) * vs) << 1);
-        int32_t sg = bfm_lerp(A->gain, B->gain, mq);
-        gain_to = (int32_t)(((int64_t)bfm_clamp(vg, 0, 32768) * sg * 327) >> 15);   /* gain 100 = 1.0 */
+        int32_t sg = BFM_GAIN[bfm_lerp(A->gain & 127u, B->gain & 127u, mq)];   /* Q12, 100 = 0 dB */
+        gain_to = (bfm_clamp(vg, 0, 32768) * sg) >> 12;  /* Q15, up to ~3.2 (+10 dB) */
         if (v->kill)
             gain_to = 0;
         dgain = (gain_to - v->gain) / (int32_t)n;
@@ -591,6 +603,7 @@ static void bfm_decimate(const int32_t *x, int32_t *y, uint32_t n)
 
 /* ------------------------------------------------------------- master --- */
 static uint32_t bfm_master_q15 = 32767;    /* the MASTER pot */
+static uint8_t bfm_lim_off;                /* host tests only: no limiter, no soft knee (to measure raw levels) */
 
 static void bfm_master(const int32_t *mono, int32_t *out, uint32_t n)
 {
@@ -646,24 +659,26 @@ static void bfm_master(const int32_t *mono, int32_t *out, uint32_t n)
         if (p > a)
             a = p;
         p = (int32_t)(((int64_t)a * bm.lim_g) >> 16);
+        if (bfm_lim_off)
+            p = 0;
         if (p > 29000)
             bm.lim_g = (int32_t)((29000u << 16) / (uint32_t)a);   /* (a > 29000 here: 32-bit) */
         else
             bm.lim_g += (65536 - bm.lim_g) >> 11;
         l = (int32_t)(((int64_t)l * bm.lim_g) >> 16);
         r = (int32_t)(((int64_t)r * bm.lim_g) >> 16);
-        if (l > 24576 || l < -24576) {
+        if (!bfm_lim_off && (l > 24576 || l < -24576)) {
             int32_t s = l < 0 ? -1 : 1, e = (l < 0 ? -l : l) - 24576;
             l = s * (24576 + ((8191 * bfm_tanh(e)) >> 15));
         }
-        if (r > 24576 || r < -24576) {
+        if (!bfm_lim_off && (r > 24576 || r < -24576)) {
             int32_t s = r < 0 ? -1 : 1, e = (r < 0 ? -r : r) - 24576;
             r = s * (24576 + ((8191 * bfm_tanh(e)) >> 15));
         }
         l = (int32_t)(((int64_t)l * bfm_master_q15) >> 15);
         r = (int32_t)(((int64_t)r * bfm_master_q15) >> 15);
-        out[2u * i] = bfm_clamp(l, -32767, 32767);
-        out[2u * i + 1u] = bfm_clamp(r, -32767, 32767);
+        out[2u * i] = bfm_lim_off ? l : bfm_clamp(l, -32767, 32767);
+        out[2u * i + 1u] = bfm_lim_off ? r : bfm_clamp(r, -32767, 32767);
         a = out[2u * i] < 0 ? -out[2u * i] : out[2u * i];
         if (a > bm.peak)
             bm.peak = a;

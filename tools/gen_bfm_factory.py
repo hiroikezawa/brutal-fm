@@ -52,9 +52,14 @@ def apply(s, kw):
     for k, v in kw.items():
         if k == "ratios":
             s["ratio"] = [RIDX[r] for r in v]
-        elif k == "edges":                     # {(src, dst): amount}
+        elif k == "edges":                     # {(src, dst): amount}; a negative amount sets the polarity bit
             for (a, b), x in v.items():
-                s["mat"][a * 4 + b] = x
+                s["mat"][a * 4 + b] = abs(x)
+                s.setdefault("neg", [])
+                if x < 0 and a * 4 + b not in s["neg"]:
+                    s["neg"].append(a * 4 + b)
+                if x >= 0 and a * 4 + b in s["neg"]:
+                    s["neg"].remove(a * 4 + b)
         elif k in ("atk", "dec", "sus", "rel", "level", "out", "fine", "fixed", "phase") and isinstance(v, dict):
             for op, x in v.items():
                 s[k][op] = x
@@ -168,8 +173,8 @@ P.append(patch("ATTRACTOR", "CHAOS", "CHAOS",
                lfo_rate=70, mod_int=110, mod_fold=90, movement=90, fold=0))
 P.append(patch("CROSSFIRE", "CHAOS", "CHAOS",
                sound("X-FM", ("1", "2", "1.5", "3"), sus=110, rel=40, character=80,
-                     edges={(1, 0): 80, (0, 1): 80, (3, 2): 80, (2, 3): 80}),
-               {"edges": {(0, 2): 60, (2, 0): 60}, "fold": 60, "fmix": 80}, algo=4, poly=0, feedback=80))
+                     edges={(1, 0): 80, (0, 1): -80, (3, 2): 80, (2, 3): -80}),
+               {"edges": {(0, 2): 60, (2, 0): -60}, "fold": 60, "fmix": 80}, algo=4, poly=0, feedback=80))
 P.append(patch("RUNAWAY", "CHAOS", "CHAOS",
                sound("RING", ("1", "1.06", "2", "2.5"), sus=110, rel=50, character=40),
                {"edges": {(0, 3): 110}, "character": 110}, algo=5, feedback=96, mod_fb=110, drift_rate=60,
@@ -196,7 +201,7 @@ P.append(patch("STATIC HIT", "NOISE", "NOISE",
                sound("STACK", ("1", "3.14", "9.42", "16"), **PERC, dec=60, rel=50, character=80),
                {"character": 120}, algo=0, intensity=90, drive=40))
 P.append(patch("CLICK STORM", "NOISE", "NOISE",
-               sound("FAN", ("1", "7", "13", "16"), **PERC, dec={0: 30, 1: 25, 2: 25, 3: 20}, rel=20,
+               sound("FAN", ("1", "7", "13", "16"), **PERC, dec={0: 48, 1: 40, 2: 40, 3: 30}, rel=30, level=127,
                      character=100),
                {"character": 127, "ratios": ("0.5", "9", "15", "16")}, algo=2, crush=60,
                arp={"on": 1, "density": 95, "complexity": 110, "gatevar": 20, "timbrevar": 120, "rate": 0,
@@ -233,7 +238,7 @@ P.append(patch("IRON DRONE", "DRONE", "GROWL",
                mod_fold=90, movement=90, dly_mix=40, dly_time=127, dly_fb=80))
 P.append(patch("VOID HUM", "DRONE", "CHAOS",
                sound("X-FM", ("0.5", "0.71", "1", "1.41"), atk=100, sus=115, rel=115, character=40),
-               {"character": 100, "edges": {(0, 1): 80, (2, 3): 80}}, algo=4, drift_rate=8, mod_morph=120,
+               {"character": 100, "edges": {(0, 1): -80, (2, 3): -80}}, algo=4, drift_rate=8, mod_morph=120,
                mod_fb=100, movement=100))
 P.append(patch("FURNACE", "DRONE", "NOISE",
                sound("MESH", ("0.5", "1", "1.5", "3.14"), atk=90, sus=115, rel=110, character=40,
@@ -264,6 +269,19 @@ P.append(patch("OCEAN RUST", "DRONE", "GROWL",
 
 assert len(P) == 40, len(P)
 
+# loudness: every sound's GAIN from tests/calibrate.c (CAL=1), so that A, B and the presets match (-15 dBFS RMS
+# over their loudest 50 ms of a held C3, before the limiter). Missing file or name: the gain written above
+GAINS = {}
+_gf = Path(__file__).resolve().parent / "factory_gain.txt"
+if _gf.exists():
+    for line in _gf.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            n, ga, gb = line.split("|")
+            GAINS[n] = (int(ga), int(gb))
+for p in P:
+    if p["name"] in GAINS:
+        p["a"]["gain"], p["b"]["gain"] = GAINS[p["name"]]
+
 
 def c_sound(s):
     def a(v):
@@ -273,6 +291,8 @@ def c_sound(s):
          f".atk = {a(s['atk'])}", f".dec = {a(s['dec'])}", f".sus = {a(s['sus'])}", f".rel = {a(s['rel'])}",
          f".mat = {a(s['mat'])}"]
     f += [f".{k} = {s[k]}" for k in ("fold", "sym", "bias", "fmix", "character", "gain")]
+    neg = sum(1 << e for e in s.get("neg", []))
+    f += [f".neg = {{{neg & 255}, {neg >> 8}}}"]
     return "{" + ", ".join(f) + "}"
 
 
@@ -280,6 +300,8 @@ def check(p):
     for side in ("a", "b"):
         s = p[side]
         for k, v in s.items():
+            if k == "neg":
+                continue
             vals = v if isinstance(v, list) else [v]
             for x in vals:
                 assert 0 <= x <= 127, (p["name"], side, k, x)
