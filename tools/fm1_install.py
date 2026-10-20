@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+# BRUTAL FM changes (C) 2026 Hiro Ikezawa: the port filter also finds "BRUTAL FM-1"
 """Install a Felucca package (.fwsc) on an FM-1 over USB-MIDI.
 
 The same update as the web installer (web/fm1ota.js): step 1, the

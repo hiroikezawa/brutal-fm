@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+ * BRUTAL FM changes (C) 2026 Hiro Ikezawa: the device's USB names ("BRUTAL FM", "BRUTAL FM-1") */
 /* USB full-speed device on USB0: a
  * class-compliant USB-MIDI interface. All SIE traffic happens in one place,
  * usb_poll(), called from the TIMER5 ISR at 2 kHz, so INDEX is never shared
@@ -357,8 +358,9 @@ static const uint8_t STR1[] = {20, 3, 'B', 0, 'R', 0, 'U', 0, 'T', 0, 'A', 0, 'L
 #ifdef FELUCCA_LOADER
 static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0, ' ', 0, 'U', 0, 'p', 0,
                                'd', 0, 'a', 0, 't', 0, 'e', 0};
-#else
-static const uint8_t STR2[] = {20, 3, 'B', 0, 'R', 0, 'U', 0, 'T', 0, 'A', 0, 'L', 0, ' ', 0, 'F', 0, 'M', 0};
+#else   /* "BRUTAL FM-1": the port name keeps "FM-1", which every FM-1 installer looks for (Felucca's web installer
+         * and tools/fm1_install.py probe only ports matching fm-1 / felucca / ota / ...): the way back must find it */
+static const uint8_t STR2[] = {24, 3, 'B', 0, 'R', 0, 'U', 0, 'T', 0, 'A', 0, 'L', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0};
 #endif
 
 static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)

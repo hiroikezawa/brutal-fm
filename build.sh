@@ -12,6 +12,7 @@ HERE="$(pwd)"
 export JIELI_TOOLCHAIN="${JIELI_TOOLCHAIN:-$HERE/../toolchain/jieli/toolchain}"
 export AC79_SDK="${AC79_SDK:-$HERE/../toolchain/fw-AC79_AIoT_SDK}"
 PY="${PYTHON:-python3}"
+[ -d "$HERE/../toolchain/pylib" ] && export PYTHONPATH="$HERE/../toolchain/pylib${PYTHONPATH:+:$PYTHONPATH}"
 
 "$PY" -c 'import PIL, fontTools' 2>/dev/null || { echo "build.sh: $PY needs Pillow and fontTools (tools/setup_env.sh)"; exit 1; }
 [ -x "$JIELI_TOOLCHAIN/pi32v2/bin/clang" ] || { echo "build.sh: no toolchain in $JIELI_TOOLCHAIN (tools/setup_env.sh)"; exit 1; }
