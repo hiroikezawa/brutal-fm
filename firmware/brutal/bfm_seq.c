@@ -79,7 +79,10 @@ static int sq_clock_running(void)
     return !sq.ext_seen || sq.ext_lost || sq.ext_run;      /* AUTO: internal unless a clock says stop */
 }
 
-static int sq_ext_drives(void) { return bfm_set.sync != SYNC_INT && sq.ext_seen && !sq.ext_lost; }
+static int sq_ext_drives(void)
+{
+    return bfm_set.sync != SYNC_INT && sq.ext_seen && !sq.ext_lost;
+}
 
 /* ---------------------------------------------------------------- sets --- */
 static void set_clear(uint32_t *s) { s[0] = s[1] = s[2] = s[3] = 0; }
@@ -139,12 +142,16 @@ static void sq_install(const bfm_pattern_t *p)   /* the pattern plays from now *
         sq.step = 0;
 }
 
+static void sq_tick(void);
+static int sq_ext_drives(void);
 static void sq_start(void)
 {
     sq.playing = 1;
     sq.step = 0;
     sq.tick = 0;
     sq.frac = 0;
+    if (!sq_ext_drives())
+        sq_tick();                                       /* step 1 now: the key that started it sounds at once */
 }
 
 static void sq_stop(void)

@@ -95,7 +95,7 @@ def main():
     L += arr("BFM_ATK_SHOW", "uint32_t", [round(10 * 0.3 * (12000 / 0.3) ** (i / 127)) for i in range(128)], 8)
     L += arr("BFM_DEC_SHOW", "uint32_t", [round(10 * 1.0 * (30000 / 1.0) ** (i / 127)) for i in range(128)], 8)
     L += arr("BFM_FIXED_SHOW", "uint32_t", [round(10 * 1.0 * (9000 / 1.0) ** (i / 127)) for i in range(128)], 8)
-    hb = kaiser_halfband(23, 7.0)
+    hb = kaiser_halfband(39, 8.0)
     hbq = [round(v * 65536) for v in hb]        # Q16, rounded so the sum is 1.0 exactly
     hbq[len(hbq) // 2] += 65536 - sum(hbq)
     L += [f"#define BFM_HB_N {len(hbq)}"]

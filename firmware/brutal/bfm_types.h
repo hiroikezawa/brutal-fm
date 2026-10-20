@@ -12,8 +12,7 @@
 #include <stdint.h>
 
 #define BFM_NOP 4                /* operators per voice */
-#define BFM_MAXV 8               /* voices (QUALITY ECO); HQ renders at 2x and allows BFM_MAXV_HQ */
-#define BFM_MAXV_HQ 4
+#define BFM_MAXV 8               /* voices at most (the VOICES setting; HQ renders at 2x and allows half) */
 #define BFM_MAXSTEP 16
 #define BFM_POOL 16              /* most distinct notes the ARP takes (the lowest 16 of a bigger set) */
 #define BFM_NAME 12
@@ -98,7 +97,8 @@ typedef struct {
     uint8_t quality;             /* 0 ECO (1x), 1 HQ (2x oversampled) */
     uint8_t bpm;                 /* internal tempo - 40 (40..295) */
     uint8_t palette, last_preset;
-    uint8_t rsv[4];
+    uint8_t voices;              /* polyphony 2..8 (HQ: half of it) */
+    uint8_t rsv[3];
 } bfm_settings_t;
 #define BFM_SETTINGS_MAGIC 0x31534642u   /* "BFS1" */
 

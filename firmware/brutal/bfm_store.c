@@ -175,6 +175,7 @@ static void bfm_settings_default(bfm_settings_t *s)
     s->cc[2] = 71;               /* FEEDBACK: resonance */
     s->cc[3] = 76;               /* MOVEMENT: vibrato rate */
     s->quality = 1;
+    s->voices = 6;
     s->bpm = 120 - 40;
     s->palette = 0;
 }
@@ -189,5 +190,6 @@ static void bfm_settings_sanitize(bfm_settings_t *s)
     for (i = 0; i < 4u; i++)
         s->cc[i] &= 127u;
     s->quality = s->quality != 0;
+    if (s->voices < 2u || s->voices > BFM_MAXV) s->voices = 6;
     if (s->bpm > 215u) s->bpm = 80;
 }

@@ -57,6 +57,8 @@ static struct {
     uint32_t nz;
     int32_t dc_x1;
     int64_t dc_y1;               /* Q16 above the sample */
+    int32_t dc2_x1;
+    int64_t dc2_y1;              /* the second blocker, after DRIVE / CRUSH */
     int32_t lim_g;               /* Q16 */
     int32_t crush_hold_l, crush_hold_r;
     uint32_t crush_ph;
@@ -123,7 +125,12 @@ static inline int32_t bfm_tanh(int32_t x)        /* x Q15 (+-1 = +-32768), any r
 }
 
 /* --------------------------------------------------------------- voices --- */
-static uint32_t bfm_maxv(void) { return bfm_set.quality ? BFM_MAXV_HQ : BFM_MAXV; }
+/* the polyphony: VOICES (2..8, a setting); HQ renders every voice twice as fast, so it allows half */
+static uint32_t bfm_maxv(void)
+{
+    uint32_t v = bfm_set.voices < 1u ? 1u : bfm_set.voices > BFM_MAXV ? BFM_MAXV : bfm_set.voices;
+    return bfm_set.quality ? (v + 1u) / 2u : v;
+}
 
 static void bfm_voice_start(bfm_voice_t *v, uint32_t note, uint32_t vel, int legato)
 {
@@ -186,11 +193,18 @@ static bfm_voice_t *bfm_voice_alloc(void)
     return best;
 }
 
+#ifndef BFM_TRACE_ON
+#define BFM_TRACE_ON(note, vel) ((void)0)   /* the host tests watch every note the engine starts */
+#endif
+#ifndef BFM_TRACE_OFF
+#define BFM_TRACE_OFF(note) ((void)0)
+#endif
 /* note on with the ARP step's timbre (0s for a played key) */
 static void bfm_note_on_t(uint32_t note, uint32_t vel, int32_t fm, int32_t fb, int32_t mo, uint32_t acc)
 {
     bfm_voice_t *v;
     int legato = 0;
+    BFM_TRACE_ON(note, vel);
     if (!bfm_p.poly) {
         v = &bv[0];
         legato = v->active && v->gate;
@@ -208,6 +222,7 @@ static void bfm_note_on(uint32_t note, uint32_t vel) { bfm_note_on_t(note, vel, 
 static void bfm_note_off(uint32_t note)
 {
     uint32_t i;
+    BFM_TRACE_OFF(note);
     for (i = 0; i < BFM_MAXV; i++)
         if (bv[i].active && bv[i].gate && bv[i].note == note)
             bfm_voice_release(&bv[i]);
@@ -320,19 +335,101 @@ static int32_t bfm_macro_scale(int32_t v)
 }
 
 /* ------------------------------------------------------------- render --- */
+/* the per-sample work of one voice, with everything the block worked out in front of it */
+typedef struct {
+    int32_t cur[BFM_NOP], y1[BFM_NOP], fb[BFM_NOP];   /* this sample, the last, the last two averaged */
+    const int32_t *src[BFM_NOP][BFM_NOP];            /* the edges into each operator: what they read .. */
+    int32_t amt[BFM_NOP][BFM_NOP];                   /* .. and how much (Q8 cycles) */
+    uint8_t bend[BFM_NOP][BFM_NOP];                  /* a delayed path (CHAOS bends these) */
+    uint8_t ne[BFM_NOP];
+    uint32_t ph[BFM_NOP], inc[BFM_NOP];
+    int32_t amp[BFM_NOP], damp[BFM_NOP], outg[BFM_NOP];
+    int32_t fold_g, sym_n, bias, fmix, body, gain, dgain;
+    uint32_t binc, pbody;
+    int32_t nzamt, crush_mask, chaos_g, gfb, vout;
+    uint32_t nz;
+} bfm_kern_t;
+
+#define BFM_OP(K, k, X)                                                                                      \
+    do {                                                                                                     \
+        uint32_t pm_ = 0, q_;                                                                                \
+        int32_t y_;                                                                                          \
+        for (q_ = 0; q_ < (K)->ne[k]; q_++) {                                                                \
+            int32_t v_ = *(K)->src[k][q_];                                                                   \
+            if ((X) && (K)->chaos_g && (K)->bend[k][q_])                                                     \
+                v_ = bfm_sin((uint32_t)(v_ * (K)->chaos_g) << 7);                                            \
+            pm_ += (uint32_t)(v_ * (K)->amt[k][q_]);                                                         \
+        }                                                                                                    \
+        if (X)                                                                                               \
+            pm_ += (uint32_t)(nzv * (K)->nzamt) + (uint32_t)((K)->vout * (K)->gfb);                          \
+        (K)->ph[k] += (K)->inc[k];                                                                           \
+        y_ = (bfm_sin((K)->ph[k] + (pm_ << 9)) * (K)->amp[k]) >> 15;                                         \
+        if (X)                                                                                               \
+            y_ = y_ < 0 ? -((-y_) & (K)->crush_mask) : y_ & (K)->crush_mask;   /* symmetric: no DC */        \
+        (K)->cur[k] = y_;                                                                                    \
+        (K)->amp[k] += (K)->damp[k];  /* (linear between two levels >= 0: never below 0) */                  \
+    } while (0)
+
+static inline __attribute__((always_inline)) void bfm_kernel_body(bfm_kern_t *K, int32_t *acc, uint32_t n,
+                                                                   const int X)
+{
+    uint32_t s, k;
+    for (s = 0; s < n; s++) {
+        int32_t out, nzv = 0;
+        if (X && K->nzamt) {
+            K->nz = K->nz * 1664525u + 1013904223u;
+            nzv = (int32_t)(K->nz >> 16) - 32768;
+        }
+        BFM_OP(K, 3, X);
+        BFM_OP(K, 2, X);
+        BFM_OP(K, 1, X);
+        BFM_OP(K, 0, X);
+        out = ((K->cur[0] * K->outg[0]) >> 15) + ((K->cur[1] * K->outg[1]) >> 15) +
+              ((K->cur[2] * K->outg[2]) >> 15) + ((K->cur[3] * K->outg[3]) >> 15);
+        for (k = 0; k < BFM_NOP; k++) {
+            K->fb[k] = (K->cur[k] + K->y1[k]) >> 1;
+            K->y1[k] = K->cur[k];
+        }
+        if (X)
+            K->vout = out >> 2;
+        if (K->fmix) {                                    /* the sine folder */
+            int32_t u = ((out * K->fold_g) >> 8) + K->bias, y;
+            if (u < 0)
+                u = (u * K->sym_n) >> 8;
+            y = bfm_sin((uint32_t)u << 15);
+            out += ((y - out) * (K->fmix >> 3)) >> 12;   /* (|y - out| < 2^18: 32-bit) */
+        }
+        if (K->body) {                                    /* GROWL: the sub octave and the fundamental */
+            int32_t b;
+            K->pbody += K->binc;
+            b = (bfm_sin(K->pbody) + bfm_sin(K->pbody << 1)) >> 1;
+            out += (((b * (K->body >> 7)) >> 8) * K->amp[0]) >> 15;
+        }
+        acc[s] += (out * (K->gain >> 4)) >> 11;          /* (|out| < 2^18, gain < 2^16: 32-bit) */
+        K->gain += K->dgain;
+    }
+}
+static __attribute__((noinline)) void bfm_kernel(bfm_kern_t *K, int32_t *acc, uint32_t n)
+{
+    bfm_kernel_body(K, acc, n, 0);
+}
+static __attribute__((noinline)) void bfm_kernel_x(bfm_kern_t *K, int32_t *acc, uint32_t n)
+{
+    bfm_kernel_body(K, acc, n, 1);
+}
+
 /* one voice over n samples at the rate 1 << os, added into acc[] (Q15) */
 static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, uint32_t n)
 {
     const bfm_sound_t *A = &bfm_p.s[0], *B = &bfm_p.s[1];
-    uint32_t mode = bfm_p.mode % MODE_N, j, k, s, os = g->os;
+    uint32_t mode = bfm_p.mode % MODE_N, j, k, os = g->os;
     int32_t m = bfm_clamp(g->morph + v->morph_off, 0, 127), mq;
     int32_t si = bfm_macro_scale(g->inten + v->fm_off + (v->acc ? 16 : 0) +
                                  (((int32_t)v->vel - 100) * (int32_t)bfm_p.vel_sens >> 8));
     int32_t sf = bfm_macro_scale(g->fb + v->fb_off);
     uint32_t inc[BFM_NOP];
     int32_t amp0[BFM_NOP], damp[BFM_NOP], outg[BFM_NOP];
-    uint8_t ne[BFM_NOP], es[BFM_NOP][BFM_NOP], ek[BFM_NOP][BFM_NOP];
-    int32_t ea[BFM_NOP][BFM_NOP];
+    bfm_kern_t K;
     int32_t chr, fold_g, sym_n, bias, fmix, gain_to, dgain, body = 0, nzamt = 0, crush_mask = -1, gfb = 0;
     int32_t chaos_g = 0, eoff = 0;
     uint32_t binc = 0;
@@ -387,9 +484,11 @@ static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, 
         if (outg[j] && v->stage[j] < 4u)
             eoff = 1;                                    /* a carrier still sounds */
     }
-    /* the matrix: target amounts (Q12 cycles) x the macro, slewed, then edge lists per destination */
+    /* the matrix: target amounts (Q12 cycles) x the macro, slewed, then edge lists per destination. Each edge
+     * points at the value it reads: this sample's output (from a higher operator), the last sample's (from a
+     * lower one), or the last two averaged (self feedback), so the sample loop has no branches for it */
     for (j = 0; j < BFM_NOP; j++)
-        ne[j] = 0;
+        K.ne[j] = 0;
     for (k = 0; k < BFM_NOP; k++)                        /* src */
         for (j = 0; j < BFM_NOP; j++) {                  /* dst */
             uint32_t e = k * BFM_NOP + j;
@@ -403,10 +502,10 @@ static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, 
             else
                 v->amt[e] += (t - v->amt[e]) / 4;
             if (v->amt[e] >= 16) {                       /* below 1/256 cycle: nothing */
-                es[j][ne[j]] = (uint8_t)k;
-                ek[j][ne[j]] = (uint8_t)(k > j ? 0u : k < j ? 1u : 2u);
-                ea[j][ne[j]] = v->amt[e] >> 4;           /* Q8 cycles: x Q15 fits int32 with 4 edges */
-                ne[j]++;
+                uint32_t q = K.ne[j]++;
+                K.src[j][q] = k > j ? &K.cur[k] : k < j ? &K.y1[k] : &K.fb[k];
+                K.bend[j][q] = (uint8_t)(k <= j);
+                K.amt[j][q] = v->amt[e] >> 4;            /* Q8 cycles: x Q15 fits int32 with 4 edges */
             }
         }
     /* folder and mode extras */
@@ -438,59 +537,31 @@ static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, 
             gain_to = 0;
         dgain = (gain_to - v->gain) / (int32_t)n;
     }
-    for (s = 0; s < n; s++) {
-        int32_t cur[BFM_NOP], out = 0, nzv = 0;
-        if (nzamt) {
-            v->nz = v->nz * 1664525u + 1013904223u;
-            nzv = (int32_t)(v->nz >> 16) - 32768;
-        }
-        for (k = BFM_NOP; k-- > 0;) {
-            uint32_t pm = 0, q;
-            for (q = 0; q < ne[k]; q++) {
-                int32_t src = es[k][q], val;
-                val = ek[k][q] == 0u ? cur[src] : ek[k][q] == 1u ? v->y1[src] : (v->y1[src] + v->y2[src]) >> 1;
-                if (chaos_g && ek[k][q])
-                    val = bfm_sin((uint32_t)(val * chaos_g) << 7);
-                pm += (uint32_t)(val * ea[k][q]);
-            }
-            if (nzamt)
-                pm += (uint32_t)(nzv * nzamt);
-            if (gfb)
-                pm += (uint32_t)(v->vout * gfb);
-            v->ph[k] += inc[k];
-            {
-                int32_t y = bfm_sin(v->ph[k] + (pm << 9));
-                y = (y * amp0[k]) >> 15;
-                cur[k] = y & crush_mask;
-            }
-            amp0[k] += damp[k];
-            if (amp0[k] < 0)
-                amp0[k] = 0;
-        }
-        for (k = 0; k < BFM_NOP; k++) {
-            v->y2[k] = v->y1[k];
-            v->y1[k] = cur[k];
-            out += (cur[k] * outg[k]) >> 15;
-        }
-        out = bfm_clamp(out, -4 * 32768, 4 * 32768);
-        v->vout = out >> 2;
-        if (fmix) {                                       /* the sine folder */
-            int32_t u = ((out * fold_g) >> 8) + bias, y;
-            if (u < 0)
-                u = (u * sym_n) >> 8;
-            y = bfm_sin((uint32_t)u << 15);
-            out = out + (int32_t)(((int64_t)(y - out) * fmix) >> 15);
-        }
-        if (body) {                                       /* GROWL: the sub octave and the fundamental */
-            int32_t e0 = amp0[0] > 0 ? amp0[0] : 0, b;
-            v->pbody += binc;
-            b = (bfm_sin(v->pbody) + bfm_sin(v->pbody << 1)) >> 1;
-            out += (int32_t)(((int64_t)b * body >> 15) * e0 >> 15);
-        }
-        out = (int32_t)(((int64_t)out * v->gain) >> 15);
-        v->gain += dgain;
-        acc[s] += out;
+    for (k = 0; k < BFM_NOP; k++) {
+        K.y1[k] = v->y1[k];
+        K.fb[k] = (v->y1[k] + v->y2[k]) >> 1;
+        K.ph[k] = v->ph[k];
+        K.inc[k] = inc[k];
+        K.amp[k] = amp0[k];
+        K.damp[k] = damp[k];
+        K.outg[k] = outg[k];
     }
+    K.fold_g = fold_g; K.sym_n = sym_n; K.bias = bias; K.fmix = fmix;
+    K.body = body; K.binc = binc; K.pbody = v->pbody;
+    K.nzamt = nzamt; K.crush_mask = crush_mask; K.chaos_g = chaos_g; K.gfb = gfb; K.nz = v->nz; K.vout = v->vout;
+    K.gain = v->gain; K.dgain = dgain;
+    if (nzamt || chaos_g || gfb || crush_mask != -1)
+        bfm_kernel_x(&K, acc, n);                        /* CHAOS / NOISE extras */
+    else
+        bfm_kernel(&K, acc, n);
+    for (k = 0; k < BFM_NOP; k++) {
+        v->y2[k] = 2 * K.fb[k] - K.y1[k];                /* (fb = (y1 + y2) / 2, rounded down: within 1 LSB) */
+        v->y1[k] = K.y1[k];
+        v->ph[k] = K.ph[k];
+    }
+    v->pbody = K.pbody;
+    v->nz = K.nz;
+    v->vout = K.vout;
     v->gain = gain_to;
     if (v->kill || (!eoff && !v->gate)) {
         v->active = 0;                                   /* (a stolen voice was faded over this block) */
@@ -498,19 +569,20 @@ static void bfm_voice_render(bfm_voice_t *v, const bfm_glob_t *g, int32_t *acc, 
     }
 }
 
-/* half-band 2x -> 1x: x[2n] -> y[n] (FIR on the history; every other tap is zero) */
+/* half-band 2x -> 1x: x[2n] -> y[n]. A half-band FIR is symmetric and every other tap (but the centre) is zero,
+ * so an output costs (taps + 1) / 4 multiplies: pairs of samples around the centre share a coefficient */
+#define BFM_HB_C ((BFM_HB_N - 1u) / 2u)          /* the centre tap */
 static void bfm_decimate(const int32_t *x, int32_t *y, uint32_t n)
 {
     int32_t *h = bm.hb_hist;
-    uint32_t i, t, nx = 2u * n;
+    uint32_t i, k, nx = 2u * n;
     for (i = 0; i < nx; i++)
         h[BFM_HB_N - 1u + i] = x[i];
     for (i = 0; i < n; i++) {
-        int64_t a = 0;
         const int32_t *p = &h[2u * i + 1u];
-        for (t = 0; t < BFM_HB_N; t++)
-            if (BFM_HB[t])
-                a += (int64_t)p[t] * BFM_HB[t];
+        int64_t a = (int64_t)p[BFM_HB_C] * BFM_HB[BFM_HB_C];
+        for (k = 1; k <= BFM_HB_C; k += 2u)
+            a += (int64_t)(p[BFM_HB_C - k] + p[BFM_HB_C + k]) * BFM_HB[BFM_HB_C + k];
         y[i] = (int32_t)(a >> 16);
     }
     for (i = 0; i < BFM_HB_N - 1u; i++)
@@ -532,7 +604,7 @@ static void bfm_master(const int32_t *mono, int32_t *out, uint32_t n)
     for (i = 0; i < n; i++) {
         int32_t x = mono[i], l, r, a, p;
         /* DC blocker, ~7 Hz; the state keeps 16 more bits (a floored Q15 feedback would stick at an offset) */
-        int64_t y = ((int64_t)(x - bm.dc_x1) << 16) + ((bm.dc_y1 * 32702) >> 15);
+        int64_t y = ((int64_t)(x - bm.dc_x1) * 65536) + ((bm.dc_y1 * 32702) >> 15);
         bm.dc_x1 = x;
         if (y > ((int64_t)8 * 32768 << 16))
             y = (int64_t)8 * 32768 << 16;
@@ -548,9 +620,15 @@ static void bfm_master(const int32_t *mono, int32_t *out, uint32_t n)
             bm.crush_ph += crush_step;
             if (bm.crush_ph >= (1u << 16)) {
                 bm.crush_ph -= (1u << 16);
-                bm.crush_hold_l = x & cmask;
+                bm.crush_hold_l = x < 0 ? -((-x) & cmask) : x & cmask;   /* symmetric: zero stays zero */
             }
             x = bm.crush_hold_l;
+        }
+        if (drive || crush) {                             /* saturation of an uneven wave makes DC: block it again */
+            int64_t y2 = ((int64_t)(x - bm.dc2_x1) * 65536) + ((bm.dc2_y1 * 32702) >> 15);
+            bm.dc2_x1 = x;
+            bm.dc2_y1 = y2;
+            x = (int32_t)(y2 >> 16);
         }
         l = r = x;
         if (dly) {                                        /* ping-pong: L feeds R, R feeds L */
@@ -613,8 +691,11 @@ static void bfm_render_voices(int32_t *out, uint32_t n)
     for (i = 0; i < nn; i++)
         acc[i] = 0;
     for (i = 0; i < BFM_MAXV; i++)
-        if (bv[i].active)
+        if (bv[i].active) {
+            if (i >= bfm_maxv())
+                bv[i].kill = 1;                          /* fewer VOICES or HQ: the extra ones fade out */
             bfm_voice_render(&bv[i], &g, acc, nn);
+        }
     if (g.os)
         bfm_decimate(acc, mono, n);
     else

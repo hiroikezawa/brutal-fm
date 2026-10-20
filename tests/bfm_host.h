@@ -11,6 +11,16 @@
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #define BFM_POOL_SECTION
 #include "../firmware/brutal/bfm_core.c"
+#ifndef BFM_FLASH
+#define BFM_FLASH 0                     /* store_test.c builds storage.c over a RAM NOR */
+static void str_cpy(char *d, const char *s, unsigned max)
+{
+    unsigned i = 0;
+    while (i + 1u < max && s[i]) { d[i] = s[i]; i++; }
+    if (max) d[i] = 0;
+}
+#endif
+#include "../firmware/brutal/bfm_store.c"
 
 static int t_fail, t_count;
 #define CHECK(cond, ...) do { t_count++; if (cond) { printf("  ok    "); } else { t_fail++; printf("  FAIL  "); } \
@@ -22,6 +32,7 @@ static void host_init(void)
     bfm_set.magic = BFM_SETTINGS_MAGIC;
     bfm_set.bpm = 120 - 40;
     bfm_set.quality = 1;
+    bfm_set.voices = 8;
     bfm_set.cc[0] = 1; bfm_set.cc[1] = 74; bfm_set.cc[2] = 71; bfm_set.cc[3] = 76;
     bfm_set.cc_on = 1;
     bfm_set.pc_on = 1;

@@ -30,7 +30,7 @@ enum { EN_SELECT, EN_ALGO, EN_PRESET, EN_K1, EN_K2, EN_K3, EN_K4, NE };
 enum { W_PATCH, W_SND, W_SET, W_LOCK, W_SPEC, W_NONE };
 enum { F_NUM, F_BIP, F_RATIO, F_FINE, F_FIXED, F_PHASE, F_ATK, F_DEC, F_ONOFF, F_MODE, F_LFO, F_SYNC, F_RATE, F_LEN,
        F_QUAL, F_POLY, F_CH, F_CC, F_WIN, F_PCT, F_SEED, F_BPM, F_MAT, F_STEP, F_SNOTE, F_GAIN, F_DLY, F_COLOR,
-       F_ACT, F_BEND, F_DEG };
+       F_ACT, F_BEND, F_DEG, F_VOICES };
 enum { SP_SEED, SP_BPM, SP_STEP, SP_SNOTE, SP_SGATE, SP_SFM, SP_ACT_AB, SP_ACT_BA, SP_ACT_SWAP, SP_ACT_INIT,
        SP_SLOT, SP_CPOS, SP_CHR };
 typedef struct {
@@ -46,14 +46,14 @@ typedef struct {
 static const prm_t PRM[] = {
 #define P_MORPH 0
     {"MORPH", W_PATCH, OFP(morph), 0, 127, F_NUM, 0},
-    {"INTENSITY", W_PATCH, OFP(intensity), 0, 127, F_NUM, 0},
-    {"FEEDBACK", W_PATCH, OFP(feedback), 0, 127, F_NUM, 0},
-    {"MOVEMENT", W_PATCH, OFP(movement), 0, 127, F_NUM, 0},
+    {"INTENS", W_PATCH, OFP(intensity), 0, 127, F_NUM, 0},
+    {"FEEDBK", W_PATCH, OFP(feedback), 0, 127, F_NUM, 0},
+    {"MOVE", W_PATCH, OFP(movement), 0, 127, F_NUM, 0},
 #define P_DENS 4
     {"DENSITY", W_PATCH, OFP(arp.density), 0, 127, F_NUM, 0},
-    {"COMPLEXITY", W_PATCH, OFP(arp.complexity), 0, 127, F_NUM, 0},
-    {"GATE VAR", W_PATCH, OFP(arp.gatevar), 0, 127, F_NUM, 0},
-    {"TIMBRE VAR", W_PATCH, OFP(arp.timbrevar), 0, 127, F_NUM, 0},
+    {"COMPLEX", W_PATCH, OFP(arp.complexity), 0, 127, F_NUM, 0},
+    {"G.VAR", W_PATCH, OFP(arp.gatevar), 0, 127, F_NUM, 0},
+    {"T.VAR", W_PATCH, OFP(arp.timbrevar), 0, 127, F_NUM, 0},
 #define P_LEN 8
     {"LENGTH", W_PATCH, OFP(arp.length), 0, 1, F_LEN, 0},
     {"RATE", W_PATCH, OFP(arp.rate), 0, RATE_N - 1, F_RATE, 0},
@@ -62,18 +62,18 @@ static const prm_t PRM[] = {
 #define P_HOLD 12
     {"HOLD", W_PATCH, OFP(arp.hold), 0, 1, F_ONOFF, 0},
     {"FREEZE", W_LOCK, LK_FREEZE, 0, 1, F_ONOFF, 0},
-    {"RHYTHM LK", W_LOCK, LK_RHYTHM, 0, 1, F_ONOFF, 0},
-    {"PITCH LK", W_LOCK, LK_PITCH, 0, 1, F_ONOFF, 0},
+    {"R.LOCK", W_LOCK, LK_RHYTHM, 0, 1, F_ONOFF, 0},
+    {"P.LOCK", W_LOCK, LK_PITCH, 0, 1, F_ONOFF, 0},
 #define P_TLOCK 16
-    {"TIMBRE LK", W_LOCK, LK_TIMBRE, 0, 1, F_ONOFF, 0},
+    {"T.LOCK", W_LOCK, LK_TIMBRE, 0, 1, F_ONOFF, 0},
     {"SEED", W_SPEC, SP_SEED, 0, 0, F_SEED, 0},
     {"ARP", W_PATCH, OFP(arp.on), 0, 1, F_ONOFF, 0},
     {"SYNC", W_SET, OFG(sync), 0, SYNC_N - 1, F_SYNC, 0},
 #define P_STEP 20
     {"STEP", W_SPEC, SP_STEP, 0, 0, F_STEP, 0},
     {"NOTE", W_SPEC, SP_SNOTE, 0, 0, F_SNOTE, 0},
-    {"STEP GATE", W_SPEC, SP_SGATE, 0, 0, F_PCT, 0},
-    {"STEP FM", W_SPEC, SP_SFM, 0, 0, F_BIP, 0},
+    {"S.GATE", W_SPEC, SP_SGATE, 0, 0, F_PCT, 0},
+    {"S.FM", W_SPEC, SP_SFM, 0, 0, F_BIP, 0},
 #define P_RATIO 24
     {"RATIO", W_SND, OFS(ratio), 0, BFM_NRATIO - 1, F_RATIO, 1},
     {"FINE", W_SND, OFS(fine), 0, 127, F_FINE, 1},
@@ -85,67 +85,67 @@ static const prm_t PRM[] = {
     {"> OP3", W_SND, OFS(mat[2]), 0, 127, F_MAT, 0},
     {"> OP4", W_SND, OFS(mat[3]), 0, 127, F_MAT, 0},
 #define P_FIX 32
-    {"FIX OP1", W_SND, OFS(fixed[0]), 0, 127, F_FIXED, 0},
-    {"FIX OP2", W_SND, OFS(fixed[1]), 0, 127, F_FIXED, 0},
-    {"FIX OP3", W_SND, OFS(fixed[2]), 0, 127, F_FIXED, 0},
-    {"FIX OP4", W_SND, OFS(fixed[3]), 0, 127, F_FIXED, 0},
+    {"FIX 1", W_SND, OFS(fixed[0]), 0, 127, F_FIXED, 0},
+    {"FIX 2", W_SND, OFS(fixed[1]), 0, 127, F_FIXED, 0},
+    {"FIX 3", W_SND, OFS(fixed[2]), 0, 127, F_FIXED, 0},
+    {"FIX 4", W_SND, OFS(fixed[3]), 0, 127, F_FIXED, 0},
 #define P_PH 36
-    {"PHASE 1", W_SND, OFS(phase[0]), 0, 127, F_PHASE, 0},
-    {"PHASE 2", W_SND, OFS(phase[1]), 0, 127, F_PHASE, 0},
-    {"PHASE 3", W_SND, OFS(phase[2]), 0, 127, F_PHASE, 0},
-    {"PHASE 4", W_SND, OFS(phase[3]), 0, 127, F_PHASE, 0},
+    {"PH 1", W_SND, OFS(phase[0]), 0, 127, F_PHASE, 0},
+    {"PH 2", W_SND, OFS(phase[1]), 0, 127, F_PHASE, 0},
+    {"PH 3", W_SND, OFS(phase[2]), 0, 127, F_PHASE, 0},
+    {"PH 4", W_SND, OFS(phase[3]), 0, 127, F_PHASE, 0},
 #define P_ENV 40
-    {"ATTACK", W_SND, OFS(atk), 0, 127, F_ATK, 1},
-    {"DECAY", W_SND, OFS(dec), 0, 127, F_DEC, 1},
-    {"SUSTAIN", W_SND, OFS(sus), 0, 127, F_NUM, 1},
-    {"RELEASE", W_SND, OFS(rel), 0, 127, F_DEC, 1},
+    {"ATK", W_SND, OFS(atk), 0, 127, F_ATK, 1},
+    {"DEC", W_SND, OFS(dec), 0, 127, F_DEC, 1},
+    {"SUS", W_SND, OFS(sus), 0, 127, F_NUM, 1},
+    {"REL", W_SND, OFS(rel), 0, 127, F_DEC, 1},
 #define P_MOD1 44
-    {"LFO SHAPE", W_PATCH, OFP(lfo_shape), 0, LFO_N - 1, F_LFO, 0},
-    {"LFO RATE", W_PATCH, OFP(lfo_rate), 0, 127, F_NUM, 0},
-    {"LFO>INTENS", W_PATCH, OFP(mod_int), 0, 127, F_BIP, 0},
-    {"LFO>FOLD", W_PATCH, OFP(mod_fold), 0, 127, F_BIP, 0},
-    {"DRIFT RATE", W_PATCH, OFP(drift_rate), 0, 127, F_NUM, 0},
-    {"DRIFT>MORPH", W_PATCH, OFP(mod_morph), 0, 127, F_BIP, 0},
-    {"DRIFT>FDBK", W_PATCH, OFP(mod_fb), 0, 127, F_BIP, 0},
-    {"LFO>PITCH", W_PATCH, OFP(mod_pitch), 0, 127, F_BIP, 0},
-    {"VEL SENS", W_PATCH, OFP(vel_sens), 0, 127, F_NUM, 0},
+    {"SHAPE", W_PATCH, OFP(lfo_shape), 0, LFO_N - 1, F_LFO, 0},
+    {"RATE", W_PATCH, OFP(lfo_rate), 0, 127, F_NUM, 0},
+    {">INTENS", W_PATCH, OFP(mod_int), 0, 127, F_BIP, 0},
+    {">FOLD", W_PATCH, OFP(mod_fold), 0, 127, F_BIP, 0},
+    {"RATE", W_PATCH, OFP(drift_rate), 0, 127, F_NUM, 0},
+    {">MORPH", W_PATCH, OFP(mod_morph), 0, 127, F_BIP, 0},
+    {">FDBK", W_PATCH, OFP(mod_fb), 0, 127, F_BIP, 0},
+    {"VIBRATO", W_PATCH, OFP(mod_pitch), 0, 127, F_BIP, 0},
+    {"VELO", W_PATCH, OFP(vel_sens), 0, 127, F_NUM, 0},
     {"BEND", W_PATCH, OFP(bend), 0, 24, F_BEND, 0},
     {"GLIDE", W_PATCH, OFP(glide), 0, 127, F_NUM, 0},
     {"VOICE", W_PATCH, OFP(poly), 0, 1, F_POLY, 0},
 #define P_FX 56
     {"FOLD", W_SND, OFS(fold), 0, 127, F_NUM, 0},
-    {"SYMMETRY", W_SND, OFS(sym), 0, 127, F_BIP, 0},
+    {"SYMM", W_SND, OFS(sym), 0, 127, F_BIP, 0},
     {"BIAS", W_SND, OFS(bias), 0, 127, F_BIP, 0},
-    {"FOLD MIX", W_SND, OFS(fmix), 0, 127, F_NUM, 0},
+    {"MIX", W_SND, OFS(fmix), 0, 127, F_NUM, 0},
     {"DRIVE", W_PATCH, OFP(drive), 0, 127, F_NUM, 0},
     {"CRUSH", W_PATCH, OFP(crush), 0, 127, F_NUM, 0},
-    {"DLY TIME", W_PATCH, OFP(dly_time), 0, 127, F_DLY, 0},
-    {"DLY FDBK", W_PATCH, OFP(dly_fb), 0, 127, F_NUM, 0},
-    {"DLY MIX", W_PATCH, OFP(dly_mix), 0, 127, F_NUM, 0},
+    {"D.TIME", W_PATCH, OFP(dly_time), 0, 127, F_DLY, 0},
+    {"D.FDBK", W_PATCH, OFP(dly_fb), 0, 127, F_NUM, 0},
+    {"D.MIX", W_PATCH, OFP(dly_mix), 0, 127, F_NUM, 0},
     {"MODE", W_PATCH, OFP(mode), 0, MODE_N - 1, F_MODE, 0},
-    {"CHARACTER", W_SND, OFS(character), 0, 127, F_NUM, 0},
+    {"CHAR", W_SND, OFS(character), 0, 127, F_NUM, 0},
     {"GAIN", W_SND, OFS(gain), 0, 127, F_GAIN, 0},
 #define P_GLO 68
     {"SYNC", W_SET, OFG(sync), 0, SYNC_N - 1, F_SYNC, 0},
     {"BPM", W_SPEC, SP_BPM, 0, 0, F_BPM, 0},
     {"MIDI CH", W_SET, OFG(midi_ch), 0, 16, F_CH, 0},
     {"QUALITY", W_SET, OFG(quality), 0, 1, F_QUAL, 0},
-    {"CC MORPH", W_SET, OFG(cc[0]), 0, 127, F_CC, 0},
-    {"CC INTENS", W_SET, OFG(cc[1]), 0, 127, F_CC, 0},
-    {"CC FDBK", W_SET, OFG(cc[2]), 0, 127, F_CC, 0},
-    {"CC MOVE", W_SET, OFG(cc[3]), 0, 127, F_CC, 0},
+    {"MORPH", W_SET, OFG(cc[0]), 0, 127, F_CC, 0},
+    {"INTENS", W_SET, OFG(cc[1]), 0, 127, F_CC, 0},
+    {"FEEDBK", W_SET, OFG(cc[2]), 0, 127, F_CC, 0},
+    {"MOVE", W_SET, OFG(cc[3]), 0, 127, F_CC, 0},
     {"CC IN", W_SET, OFG(cc_on), 0, 1, F_ONOFF, 0},
-    {"PROG CHG", W_SET, OFG(pc_on), 0, 1, F_ONOFF, 0},
+    {"PC IN", W_SET, OFG(pc_on), 0, 1, F_ONOFF, 0},
     {"COLOR", W_SET, OFG(palette), 0, UI_NPALETTES, F_COLOR, 0},
-    {"", W_NONE, 0, 0, 0, F_NUM, 0},
+    {"VOICES", W_SET, OFG(voices), 2, BFM_MAXV, F_VOICES, 0},
 #define P_TOOLS 80
-    {"COPY A>B", W_SPEC, SP_ACT_AB, 0, 0, F_ACT, 0},
-    {"COPY B>A", W_SPEC, SP_ACT_BA, 0, 0, F_ACT, 0},
-    {"SWAP A/B", W_SPEC, SP_ACT_SWAP, 0, 0, F_ACT, 0},
-    {"INIT SOUND", W_SPEC, SP_ACT_INIT, 0, 0, F_ACT, 0},
+    {"A>B", W_SPEC, SP_ACT_AB, 0, 0, F_ACT, 0},
+    {"B>A", W_SPEC, SP_ACT_BA, 0, 0, F_ACT, 0},
+    {"SWAP", W_SPEC, SP_ACT_SWAP, 0, 0, F_ACT, 0},
+    {"INIT", W_SPEC, SP_ACT_INIT, 0, 0, F_ACT, 0},
 #define P_SAVE 84
     {"SLOT", W_SPEC, SP_SLOT, 0, 0, F_NUM, 0},
-    {"CHAR POS", W_SPEC, SP_CPOS, 0, 0, F_NUM, 0},
+    {"POS", W_SPEC, SP_CPOS, 0, 0, F_NUM, 0},
     {"CHAR", W_SPEC, SP_CHR, 0, 0, F_NUM, 0},
     {"", W_NONE, 0, 0, 0, F_NUM, 0},
 };
@@ -593,6 +593,14 @@ static void prm_str(uint32_t id, char *b)
     case F_COLOR: str_cpy(b, v == 0 ? "BRUTAL" : UI_PALETTES[(v - 1) % UI_NPALETTES].name, 12); break;
     case F_ACT: str_cpy(b, "TURN >", 12); break;
     case F_BEND: u2s(b, (uint32_t)v); str_cat(b, " st", 12); break;
+    case F_VOICES:
+        u2s(b, (uint32_t)v);
+        if (bfm_set.quality) {
+            str_cat(b, ">", 12);
+            u2s(t, bfm_maxv());
+            str_cat(b, t, 12);
+        }
+        break;
     }
     if (d->where == W_SPEC && d->off == SP_SLOT) {
         str_cpy(b, "U", 12);
