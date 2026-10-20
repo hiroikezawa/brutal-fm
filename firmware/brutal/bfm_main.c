@@ -297,9 +297,18 @@ static void fm1_main(void)
     bfm_dbg.in_audio = 0;
     fm1_input_init();
     fm1_adc_init();
-    (void)fm1_adc_read(FM1_ADC_MASTER);
-    master_poll();
-    master_knob = fm1_adc_read(FM1_ADC_MASTER) * 16;
+    (void)fm1_adc_read(FM1_ADC_MASTER);                 /* (the first conversion after the pin setup: dropped) */
+    {   /* the knob as it stands before the first block plays (no glide from mid-scale: Felucca's master_boot) */
+        uint32_t i;
+        for (i = 0; i < 3u; i++) {
+            int32_t a = fm1_adc_read(FM1_ADC_MASTER);
+            if (a >= 0) {
+                master_knob = a * 16;
+                bfm_master_q15 = ((uint32_t)a * (uint32_t)a) >> 5;
+                break;
+            }
+        }
+    }
     audio_init();
     usb_start();
     uart_midi_init();
