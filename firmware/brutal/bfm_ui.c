@@ -222,7 +222,8 @@ static struct {
     uint8_t settings_dirty;
     uint32_t settings_t;
 } ui;
-static uint8_t ui_led[NB + NKEYS];   /* 0 off, 1 dim, 2 lit (the platform maps it) */
+static uint8_t ui_led[NB + NKEYS];   /* 0 off, 1 the glow, 3 mid, 2 lit (the platform maps it) */
+enum { LED_OFF, LED_GLOW, LED_LIT, LED_MID };
 static uint16_t ui_scope[128];       /* the output, for the PERFORM view (filled by the audio side) */
 static volatile uint8_t ui_scope_w;
 
@@ -937,36 +938,45 @@ static void ui_note_key(uint32_t k, uint32_t down)
 /* ---------------------------------------------------------------- LEDs --- */
 static void ui_leds(uint32_t now)
 {
+    /* every button and key glows, so a black FM-1 can be found on a dark stage (as Felucca, #35); a state that
+     * is on but not the focus sits at the mid level over the glow, the focus and what sounds are lit */
     uint32_t i, g = PAGES[ui.page].group, on;
     for (i = 0; i < NB + NKEYS; i++)
-        ui_led[i] = 0;
+        ui_led[i] = LED_GLOW;
     for (i = 0; i < NG; i++)
         if (i == g)
-            ui_led[GROUP_BTN[i]] = 2;
-    ui_led[B_SCL] = ui.target == 1u ? 2 : ui.target == 2u ? 1 : 0;
-    ui_led[B_PLAY] = bfm_p.arp.on ? (sq.playing ? 2 : 1) : 0;
-    ui_led[B_REC] = sq.pending ? ((now / 120u) & 1u ? 2 : 0) : (bfm_p.pat.npool && bfm_p.arp.on ? 1 : 0);
+            ui_led[GROUP_BTN[i]] = LED_LIT;
+    if (ui.target)
+        ui_led[B_SCL] = ui.target == 1u ? LED_LIT : LED_MID;
+    if (bfm_p.arp.on)
+        ui_led[B_PLAY] = sq.playing ? LED_LIT : LED_MID;
+    if (sq.pending)
+        ui_led[B_REC] = (now / 120u) & 1u ? LED_LIT : LED_GLOW;
+    else if (bfm_p.pat.npool && bfm_p.arp.on)
+        ui_led[B_REC] = LED_MID;
     if (ui.held & (1u << B_ARP)) {                    /* ARP held: the toggles' states on their buttons */
-        ui_led[B_FX] = bfm_p.arp.hold ? 2 : 1;
-        ui_led[B_SCL] = bfm_p.arp.locks & LK_FREEZE ? 2 : 1;
-        ui_led[B_ENV] = bfm_p.arp.locks & LK_RHYTHM ? 2 : 1;
-        ui_led[B_LFO] = bfm_p.arp.locks & LK_PITCH ? 2 : 1;
-        ui_led[B_EDIT] = bfm_p.arp.locks & LK_TIMBRE ? 2 : 1;
-        ui_led[B_GLO] = sq.nundo ? 1 : 0;
+        ui_led[B_FX] = bfm_p.arp.hold ? LED_LIT : LED_MID;
+        ui_led[B_SCL] = bfm_p.arp.locks & LK_FREEZE ? LED_LIT : LED_MID;
+        ui_led[B_ENV] = bfm_p.arp.locks & LK_RHYTHM ? LED_LIT : LED_MID;
+        ui_led[B_LFO] = bfm_p.arp.locks & LK_PITCH ? LED_LIT : LED_MID;
+        ui_led[B_EDIT] = bfm_p.arp.locks & LK_TIMBRE ? LED_LIT : LED_MID;
+        ui_led[B_GLO] = sq.nundo ? LED_MID : LED_GLOW;
     }
-    ui_led[B_OCTDN] = ui.oct < 0 ? 2 : 0;
-    ui_led[B_OCTUP] = ui.oct > 0 ? 2 : 0;
-    /* keys: the pool dim, the ARP's sounding note and the keys held lit */
+    if (ui.oct < 0)
+        ui_led[B_OCTDN] = LED_LIT;
+    if (ui.oct > 0)
+        ui_led[B_OCTUP] = LED_LIT;
+    /* keys: the pool at the mid level, the ARP's sounding note and the keys held lit, the rest glow */
     for (i = 0; i < NKEYS; i++) {
         int32_t n = (int32_t)KEY_BASE + (int32_t)i + 12 * ui.oct;
         uint32_t k;
-        on = 0;
+        on = LED_GLOW;
         if (bfm_p.arp.on)
             for (k = 0; k < bfm_p.pat.npool; k++)
                 if (bfm_p.pat.pool[k] == n)
-                    on = 1;
+                    on = LED_MID;
         if (sq.cur_note == n || (ui.keys & (1u << i)))
-            on = 2;
+            on = LED_LIT;
         ui_led[NB + i] = (uint8_t)on;
     }
 }

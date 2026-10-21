@@ -34,6 +34,7 @@
        letter-spacing: .04em; cursor: pointer; user-select: none; touch-action: none; }
   .b.lit { background: var(--lit); color: #111; box-shadow: 0 0 10px var(--lit); }
   .b.dim { background: #57342b; color: #ddd; }
+  .b.mid { background: #8a4a38; color: #eee; }
   .b.down { transform: translateY(1px); filter: brightness(1.3); }
   .octs { display: flex; gap: 8px; margin-top: 8px; grid-column: span 2; }
   .octs .b { width: 76px; }
@@ -43,6 +44,7 @@
   .bk { top: 0; height: 92px; background: var(--keyb); z-index: 2; }
   .wk.lit, .bk.lit { background: var(--lit); box-shadow: 0 0 10px var(--lit); }
   .wk.dim, .bk.dim { background: #6b3428; }
+  .wk.mid, .bk.mid { background: #9a4a36; }
   .wk.down, .bk.down { filter: brightness(1.4); }
   .wk i, .bk i { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 9px; color: #888; font-style: normal; }
   .master { width: 100%; }
@@ -175,6 +177,7 @@ function lights(s) {
     if (!el) continue;
     el.classList.toggle("lit", s[i] === "2");
     el.classList.toggle("dim", s[i] === "1");
+    el.classList.toggle("mid", s[i] === "3");
   }
 }
 

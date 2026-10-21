@@ -7,7 +7,7 @@
  *   - the screen: lcd_fill / lcd_blit into a 240 x 240 RGB565 frame
  *   - the flash: a 1 MiB NOR image behind storage.c's hooks (the page keeps its sectors)
  *   - the clock: milliseconds advance with the audio rendered; the main loop's frame runs every 15 ms of it
- *   - the panel: buttons, encoders and keys by their printed labels, the LEDs as ui_led[] (0 off, 1 dim, 2 lit)
+ *   - the panel: buttons, encoders and keys by their printed labels, the LEDs as ui_led[] (0 off, 1 the glow, 3 mid, 2 lit)
  *   - MIDI: USB-MIDI packets straight into the engine (sim_midi)
  * Used by the browser emulator (web/emu/build.sh, emcc) and by the host UI tests (tests/ui_test.c, cc). */
 #include <stdint.h>

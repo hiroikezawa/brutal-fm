@@ -167,7 +167,14 @@ int main(int argc, char **argv)
     sim_key(14, 1);                                        /* G4 */
     run_ms(500);
     CHECK(bfm_p.pat.npool == 3 && bfm_p.pat.pool[0] == 60 && sq.playing, "three keys: the ARP plays C4 E4 G4");
-    CHECK(ui_led[NB + 7] && ui_led[NB + 11] && ui_led[NB + 14] && !ui_led[NB + 8], "their keys lit, the others dark");
+    CHECK(ui_led[NB + 7] >= LED_LIT && ui_led[NB + 11] >= LED_LIT && ui_led[NB + 14] >= LED_LIT && ui_led[NB + 8] == LED_GLOW,
+          "their keys lit or mid, the others glow");
+    {
+        int all = 1;
+        for (int i = 0; i < NB + NKEYS; i++)
+            all &= ui_led[i] != LED_OFF;
+        CHECK(all, "every button and key glows at least (findable on a dark stage)");
+    }
     sim_button(B_ARP, 1);
     run_ms(30);
     tap(B_FX);

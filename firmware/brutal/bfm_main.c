@@ -190,26 +190,31 @@ static void fm1_fault(const fm1_crash_t *c)
 /* ------------------------------------------------------------ platform --- */
 static uint32_t ui_now(void) { return fm1_ms; }
 
-static void plat_leds(void)                  /* ui_led[] -> the matrix LEDs: lit, the dim glow, off */
+static void plat_leds(void)                  /* ui_led[] -> the matrix LEDs: lit, the mid level, the glow, off */
 {
     uint32_t i, p, r;
-    uint8_t lit[FM1_NCOL] = {0}, dim[FM1_NCOL] = {0};
+    uint8_t lit[FM1_NCOL] = {0}, dim[FM1_NCOL] = {0}, mid[FM1_NCOL] = {0};
     for (i = 0; i < NB + NKEYS; i++) {
         uint32_t id = i < NB ? PANEL_BTN[i] : 14u + (i - NB);
-        if (!ui_led[i])
+        if (ui_led[i] == LED_OFF)
             continue;
         for (p = 0; p < FM1_NCOL; p++)
             for (r = 1; r < 5u; r++)
                 if (FM1_KEYMAP[r][p] == (int8_t)id) {
-                    if (ui_led[i] == 2u)
-                        lit[p] |= (uint8_t)(1u << r);
-                    else
-                        dim[p] |= (uint8_t)(1u << r);
+                    uint8_t bit = (uint8_t)(1u << r);
+                    if (ui_led[i] == LED_LIT)
+                        lit[p] |= bit;
+                    else {
+                        dim[p] |= bit;              /* (mid: lit 1 frame in 8 over the glow) */
+                        if (ui_led[i] == LED_MID)
+                            mid[p] |= bit;
+                    }
                 }
     }
-    for (p = 0; p < FM1_NCOL; p++) {
-        fm1_led[p] = lit[p];
+    for (p = 0; p < FM1_NCOL; p++) {            /* the glow first: an LED going from lit to dim has no dark frame */
         fm1_led_dim[p] = dim[p];
+        fm1_led_mid[p] = mid[p];
+        fm1_led[p] = lit[p];
     }
 }
 
