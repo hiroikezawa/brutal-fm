@@ -258,6 +258,8 @@ static double alias_run(uint32_t q, uint32_t fold, uint32_t inten, uint32_t note
     bfm_p.mode = MODE_GROWL;
     bfm_p.dly_mix = 0;
     bfm_p.movement = 0;
+    bfm_p.drive = bfm_p.crush = 0;           /* the voice alone: no master saturation or crusher */
+    bfm_p.feedback = 64;                     /* (neutral) */
     for (k = 0; k < 2u; k++) {               /* a plain STACK, every ratio 1: every partial a harmonic */
         memcpy(bfm_p.s[k].mat, BFM_ALGO_MAT[0], 16);
         memcpy(bfm_p.s[k].out, BFM_ALGO_OUT[0], 4);

@@ -378,15 +378,21 @@ static void sq_requests(void)
         rq_panic = 0;
     }
     if (rq_load) {
-        int keep = sq.playing && bfm_stage.arp.on && bfm_stage.arp.hold;
-        sq_note_stop();
-        bfm_all_off();
-        bfm_p = bfm_stage;
-        sq.nundo = 0;
-        sq.pending = 0;
-        sq.capturing = 0;
-        if (!keep && sq.playing && !(bfm_p.arp.on && !set_empty(sq.phys)))
-            sq_stop();
+        if (sq.playing) {
+            /* the ARP is running: a preset change is a change of SOUND. The ARP keeps its settings, its
+             * pattern, the chord, HOLD, the position and the clock; the note that sounds rings on with the
+             * new sound and the next step plays it (live: nothing stops, nothing restarts) */
+            bfm_stage.arp = bfm_p.arp;
+            bfm_stage.pat = bfm_p.pat;
+            bfm_p = bfm_stage;
+        } else {
+            sq_note_stop();
+            bfm_all_off();
+            bfm_p = bfm_stage;
+            sq.nundo = 0;
+            sq.pending = 0;
+            sq.capturing = 0;
+        }
         rq_load = 0;
     }
     if (rq_arp_off) {

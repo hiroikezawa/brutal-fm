@@ -30,7 +30,7 @@
 #define FELUCCA_ID "FM-1_700"    /* package identity (build.py): BRUTAL FM's own number range, 7XY */
 #endif
 #ifndef BFM_VERSION
-#define BFM_VERSION "v0.1.1"
+#define BFM_VERSION "v0.1.2"
 #endif
 #define BFM_FLASH FELUCCA_FLASH
 #if FELUCCA_OTA && !FELUCCA_FLASH

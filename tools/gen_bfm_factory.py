@@ -269,6 +269,42 @@ P.append(patch("OCEAN RUST", "DRONE", "GROWL",
 
 assert len(P) == 40, len(P)
 
+# BRUTAL is the floor, not a category: no factory sound is clean. Every preset gets at least this much drive,
+# folding, character, FM depth and operator self-feedback (a preset already above a floor keeps its own value);
+# B, the far end of MORPH, goes further than A.
+FLOOR = {"intensity": 88, "feedback": 82, "drive": 60}
+FLOOR_A = {"fold": 55, "fmix": 75, "character": 65}
+FLOOR_B = {"fold": 90, "fmix": 95, "character": 100}
+
+
+def brutalize(p):
+    for k, v in FLOOR.items():
+        p[k] = max(p[k], v)
+    for side, fl in (("a", FLOOR_A), ("b", FLOOR_B)):
+        s = p[side]
+        for k, v in fl.items():
+            s[k] = max(s[k], v)
+        s["mat"][15] = max(s["mat"][15], 55 if side == "a" else 85)   # OP4 self feedback: the grit source
+
+
+for p in P:
+    brutalize(p)
+
+# the ones the floor leaves too clean (a low note or a bell barely reaches the folder): pushed by hand.
+# Modulators held up (no decay to a pure sine), OP4 near-chaotic, the master drive and the sample crusher on.
+HARDER = {"RUST BELL": 40, "IRON BASS": 50, "ACID GROWL": 45, "BIT BASS": 60, "SLUDGE": 45}
+for p in P:
+    if p["name"] in HARDER:
+        p["drive"] = max(p["drive"], 80)
+        p["crush"] = max(p["crush"], HARDER[p["name"]])
+        for side in ("a", "b"):
+            s = p[side]
+            s["fold"] = max(s["fold"], 85 if side == "a" else 115)
+            s["character"] = max(s["character"], 95 if side == "a" else 120)
+            s["mat"][15] = max(s["mat"][15], 95)
+            for op in (1, 2, 3):
+                s["sus"][op] = max(s["sus"][op], 90)
+
 # loudness: every sound's GAIN from tests/calibrate.c (CAL=1), so that A, B and the presets match (-15 dBFS RMS
 # over their loudest 50 ms of a held C3, before the limiter). Missing file or name: the gain written above
 GAINS = {}

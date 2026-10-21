@@ -184,6 +184,18 @@ int main(int argc, char **argv)
     sim_key(7, 0); sim_key(11, 0); sim_key(14, 0);
     run_ms(300);
     CHECK(sq.playing, "HOLD: the keys let go, it plays on");
+    {   /* a preset change while the ARP runs changes the sound only */
+        bfm_pattern_t a = bfm_p.pat;
+        bfm_arpset_t s = bfm_p.arp;
+        uint32_t t0 = sq.tick;
+        ui_preset_load(12);
+        run_ms(1000);
+        CHECK(!strcmp(bfm_p.name, BFM_FACTORY[12].name) && sq.playing && !memcmp(&a, &bfm_p.pat, sizeof a) &&
+              !memcmp(&s, &bfm_p.arp, sizeof s) && sq.tick > t0,
+              "preset change while the ARP plays: the new sound, the same pattern and settings, it plays on");
+        ui_preset_load(0);
+        run_ms(300);
+    }
     {
         bfm_pattern_t a = bfm_p.pat;
         tap(B_REC);
