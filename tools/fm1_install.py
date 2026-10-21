@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-# BRUTAL FM changes (C) 2026 Hiro Ikezawa: the port filter also finds "BRUTAL FM-1"
+# BRUTAL FM changes (C) 2026 Hiro Ikezawa: the port filter also finds "BRUTAL FM-1"; --alsa (Linux raw MIDI)
 """Install a Felucca package (.fwsc) on an FM-1 over USB-MIDI.
 
 The same update as the web installer (web/fm1ota.js): step 1, the
@@ -15,17 +15,23 @@ the FM-1 restarts and the installed identity is checked.
   fm1_install.py --info [--port NAME]
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
-install finishes the write. Needs mido with python-rtmidi.
+install finishes the write. Needs mido with python-rtmidi, or --alsa on Linux
+(the kernel's raw MIDI devices /dev/snd/midiC*D*, nothing to install: also an
+FM-1 attached to WSL with usbipd-win).
 
 Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
 loader / no restart), 6 wrong model, or another identity after the install.
 """
 import argparse
+import glob
 import hashlib
+import os
 import queue
 import re
+import select
 import sys
+import threading
 import time
 
 HS_QUERY = bytes([0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7])
@@ -209,6 +215,103 @@ class MidoBackend:
 
     def open(self, in_name, out_name):
         return MidoLink(self, in_name, out_name)
+
+
+class RawMidiLink:
+    """an ALSA raw MIDI device (/dev/snd/midiC*D*): one fd both ways, SysEx cut from the byte stream"""
+
+    def __init__(self, backend, name, path):
+        self.backend, self.name = backend, name
+        self.q = queue.Queue()
+        self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+        self.gone = False
+        self.stop = False
+        self.t = threading.Thread(target=self._rx, daemon=True)
+        self.t.start()
+
+    def _rx(self):
+        cur = None
+        while not self.stop:
+            try:
+                r, _, _ = select.select([self.fd], [], [], 0.1)
+                if not r:
+                    continue
+                data = os.read(self.fd, 4096)
+            except OSError:
+                self.gone = True
+                return
+            if not data:
+                continue
+            for b in data:
+                if b == 0xF0:
+                    cur = bytearray([b])
+                elif cur is not None:
+                    if b >= 0xF8:               # realtime bytes may sit inside a SysEx
+                        continue
+                    cur.append(b)
+                    if b == 0xF7:
+                        self.q.put(bytes(cur))
+                        cur = None
+                    elif b & 0x80:
+                        cur = None
+
+    @property
+    def lost(self):
+        return self.gone or self.name not in self.backend.input_names()
+
+    def send(self, pkt):
+        try:
+            mv = memoryview(pkt)
+            while mv:
+                select.select([], [self.fd], [], 1.0)
+                n = os.write(self.fd, mv)
+                mv = mv[n:]
+            return True
+        except OSError:
+            return False
+
+    read, drain = MidoLink.read, MidoLink.drain
+
+    def close(self):
+        self.stop = True
+        self.t.join(0.5)
+        try:
+            os.close(self.fd)
+        except OSError:
+            pass
+
+
+class RawMidiBackend:
+    """port names: "<card name> [midiCxDy]" from /proc/asound"""
+
+    def ports(self):
+        out = {}
+        for path in sorted(glob.glob("/dev/snd/midiC*D*")):
+            m = re.search(r"midiC(\d+)D(\d+)$", path)
+            try:
+                card = open(f"/proc/asound/card{m.group(1)}/id").read().strip()
+                long = card
+            except OSError:
+                card = long = f"card{m.group(1)}"
+            try:
+                info = open("/proc/asound/cards").read()
+                lm = re.search(rf"^\s*{m.group(1)} \[.*?\]: .*? - (.+)$", info, re.M)
+                long = lm.group(1).strip() if lm else card
+            except OSError:
+                pass
+            out[f"{long} [{os.path.basename(path)}]"] = path
+        return out
+
+    def input_names(self):
+        return list(self.ports())
+
+    output_names = input_names
+
+    def open(self, in_name, out_name):
+        path = self.ports().get(in_name)
+        if not path:
+            raise OSError(f"{in_name}: gone")
+        return RawMidiLink(self, in_name, path)
 
 
 def pair_output(name, outs):
@@ -463,10 +566,13 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
+    ap.add_argument("--alsa", action="store_true", help="Linux: talk to the raw MIDI devices (/dev/snd/midiC*D*)")
     a = ap.parse_args(argv)
     if bool(a.info) == bool(a.package):
         ap.error("give a PACKAGE.fwsc or --info")
     try:
+        if backend is None and a.alsa:
+            backend = RawMidiBackend()
         if backend is None:
             try:
                 backend = MidoBackend()
