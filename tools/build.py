@@ -39,7 +39,7 @@ APP_SLOT = fm1pkg_make.APP_SLOT
 LOADER_LOAD = 0x01C0A800
 LOADER_NAME = b"usb_hid_ota.bin"    # the file name the SPL looks for
 DOCKER_IMAGE = os.environ.get("JIELI_DOCKER_IMAGE", "debian:bookworm-slim")
-OPT = os.environ.get("BFM_OPT", "-O2")   # the DSP wants -O2; the image is far below the slot
+OPT = os.environ.get("BFM_OPT", "-Os")   # as Felucca: the USB driver is timing-sensitive and only proven at -Os
 CFLAGS = [OPT, "-ffunction-sections", "-fno-builtin", "-Wall", "-Wno-unused-function"]
 LINE = re.compile(r"^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2} )+)\s*\t(.*)$")
 

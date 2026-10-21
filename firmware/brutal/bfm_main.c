@@ -360,6 +360,9 @@ static void fm1_main(void)
                 fm1_enter_uboot();
             }
         }
+#if FELUCCA_CDC
+        ci_r = ci_w;                           /* no console: drop what the host sent to the CDC port */
+#endif
 #if FELUCCA_OTA
         ota_service();
         if (usb.ota_req) {

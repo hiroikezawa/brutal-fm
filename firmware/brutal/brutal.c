@@ -15,7 +15,8 @@
 #define FELUCCA_OTA 1            /* the M-UPGRADE update entry (the way to another firmware without UBOOT) */
 #endif
 #define FELUCCA_OTA_DRYRUN 0
-#define FELUCCA_CDC 0            /* no serial console */
+#define FELUCCA_CDC 1            /* the USB layout Felucca ships and tested (audio + MIDI + a CDC port); BRUTAL FM
+                                 * has no console: what the host types is dropped (bfm_main.c) */
 #ifndef FELUCCA_UAC
 #define FELUCCA_UAC 1            /* USB audio: the output, 16-bit stereo, to a computer */
 #endif
