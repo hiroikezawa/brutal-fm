@@ -21,7 +21,7 @@ Emscripten(`. ../env.sh`)が要ります。
 | `tests/calibrate.c` ファクトリープリセットの音量 | 40 × A / B | すべて −15 dBFS ±3 dB |
 | `tools/check_package.py` パッケージ | 16 | すべて ok |
 | `web/emu/emu_test.mjs` ブラウザーエミュレーター (wasm) | 8 | すべて ok |
-| 実機 | — | **未実施(未検証)** |
+| 実機 | — | 一部確認(下の「実機での確認」) |
 
 加えて、ブラウザーエミュレーターを実際の Chrome で開き、DevTools プロトコルでクリックとキー入力を送って、
 音声の再生開始、PLAY の LED、ARP の鍵盤 LED(C4 E4 G4)、画面の描画を確認しました(手動の確認。
@@ -126,6 +126,15 @@ GLO ページの CPU 表示を見て VOICES / QUALITY を調整してくださ�
 | `modes_metal_growl_chaos_noise.wav` | 同じ音色を 4 つのモードで |
 | `sweep_pitched_to_noise_diesel.wav` | INTENSITY と FEEDBACK を上げて音程からノイズへ |
 | `presets.txt` | 各プリセットのピーク、RMS、DC、スペクトル重心、平坦度、16 kHz 以上の割合 |
+
+## 実機での確認(2026-10-21、v0.1.1)
+
+- 起動、PERFORM ページ、ボタン・ノブ・鍵盤、全ボタンと鍵盤の常時点灯(LED の 3 段階)、CPU 表示 4 %(v0.1.0)
+- PC → FM-1 の USB MIDI(ノートで発音、SysEx)
+- FM-1 → PC の USB MIDI: v0.1.0(-O2、コンソールなしの USB 構成)では EP1 IN が 1 パケット目のあと応答しなくなり
+  (usbmon で DNR)、M-UPGRADE で書き換えられなくなった。v0.1.1(-Os、Felucca 既定の CDC 付き構成)で解消:
+  Windows 11 から識別の問い合わせ 50 回すべてに応答
+- UBOOT(OCT- + OCT+ 5 秒)→ Windows から `tools/uboot/` でバックアップと書き込み
 
 ## テストに入っていないこと
 

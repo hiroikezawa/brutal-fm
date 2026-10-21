@@ -66,8 +66,14 @@ WSL2 からは USB MIDI が見えないので、Windows 側の Python で実行�
 3. **M-VAVE の公式アップデーター / Workbench**
 4. **起動しない場合**: OCT- と OCT+ を 5 秒押し続けると UBOOT(チップ内蔵の更新モード)に入ります
    (BRUTAL FM が動いている間)。起動直後に 2 回続けて落ちた場合も自動で UBOOT に入ります。パソコンに
-   `WL80UBOOT`(ID 4C4A:8057)が見えたら、M-VAVE の手順で純正を書くか、Felucca の案内にある
-   FM-1 Transporter(`https://github.com/kurogedelic/FM-1-transporter`)で復旧します
+   `WL82 UBOOT1.00`(ID 4C4A:8057)が見えたら、M-VAVE の手順で純正を書くか、次のどちらかで復旧します
+   - **Windows だけで**(2026-10-21 に実機で使用): `tools/uboot/` の 2 本のスクリプトと
+     [jl-uboot-tool](https://github.com/kagaimiq/jl-uboot-tool)(MIT)を同じフォルダーに置き、管理者の
+     PowerShell で `fm1_backup.py`(フラッシュ全体 1 MiB を 2 回読んで保存。書き込みなし)、
+     `fm1_write.py 目的のflash.bin バックアップ.bin`(予行演習)、同じく `--write`(書き込み)の順に実行します。
+     書くのはアプリ領域 0x4000〜0x93000 の変わったセクターだけで、先頭と保存データには触れません。
+     UBOOT は Mac では BRUTAL FM に戻ってしまいました(Windows では入ったまま待ちます)
+   - Felucca の案内にある FM-1 Transporter(`https://github.com/kurogedelic/FM-1-transporter`、XIAO RP2040 が必要)
 
 ## 4. 操作子
 
