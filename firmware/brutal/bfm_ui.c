@@ -23,7 +23,7 @@ enum { EN_SELECT, EN_ALGO, EN_PRESET, EN_K1, EN_K2, EN_K3, EN_K4, NE };
 #define NPRESETS (BFM_NFACTORY + BFM_USER)
 
 #ifndef BFM_VERSION
-#define BFM_VERSION "v0.1.2"
+#define BFM_VERSION "v0.1.3"
 #endif
 
 /* ---------------------------------------------------------- parameters --- */
