@@ -38,16 +38,24 @@ def main():
     tames = {}
     write(tames)
     for i, n in names:
-        t = 0
+        t, first = 0, None
         while True:
             tames[n] = t
             write(tames)
             flat, hf = measure(i)
+            first = first or (flat, hf)
             if (hf <= HF_MAX and flat <= FLAT_MAX) or t == STEPS:
                 break
             t += 1
-        print(f"{n:12s} TAME {t:2d}  flat {flat:.3f}  >16k {hf:6.1f} dB" + ("  (budget not met)" if t == STEPS and
-              not (hf <= HF_MAX and flat <= FLAT_MAX) else ""), flush=True)
+        note = ""
+        if not (hf <= HF_MAX and flat <= FLAT_MAX):
+            note = "  (budget not met"
+            if first[1] - hf < 3.0:                  # taming that buys under 3 dB only costs the knobs: none
+                t, (flat, hf) = 0, first
+                tames[n] = 0
+                note += ": left as written"
+            note += ")"
+        print(f"{n:12s} TAME {t:2d}  flat {flat:.3f}  >16k {hf:6.1f} dB{note}", flush=True)
     write(tames)
 
 

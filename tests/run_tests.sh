@@ -21,6 +21,8 @@ $CC $SAN $FLAGS -Ibuild/gen -o $OUT/dsp_test tests/dsp_test.c -lm
 run "DSP (extremes, random patches, DC, decay, clicks, polarity, MORPH level, aliasing, 60 s)" $OUT/dsp_test
 $CC $SAN $FLAGS -w -DSIM_NATIVE -Ibuild/gen -Ifirmware/drivers -Ifirmware/brutal -Ifirmware/hal -o $OUT/ui_test tests/ui_test.c -lm
 run "UI on the simulated FM-1 (pages, knobs, A/B, presets, flash, ARP keys, octave, MIDI PC)" $OUT/ui_test build/ui
+$CC -O2 $FLAGS -Ibuild/gen -o $OUT/knob_effect tests/knob_effect.c -lm
+run "factory presets: every PERFORM knob acts, MORPH keeps the pitch" $OUT/knob_effect
 $CC -O2 $FLAGS -Ibuild/gen -o $OUT/calibrate tests/calibrate.c -lm
 run "factory presets: A and B at the same loudness" $OUT/calibrate
 $CC -O2 -w -Ibuild/gen -o $OUT/render tests/render.c -lm

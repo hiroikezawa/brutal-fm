@@ -337,6 +337,7 @@ def tame(p, t):
             p[k] = toward(p[k], 64, f)
     if p["intensity"] > 64:
         p["intensity"] = toward(p["intensity"], 64, (0.5 + 0.5 * f) * h)
+    p["arp"]["timbrevar"] = int(round(p["arp"]["timbrevar"] * f))   # the ARP's per-step FM / FEEDBACK swings
     for side in ("a", "b"):
         s = p[side]
         for a in range(4):
@@ -360,6 +361,33 @@ if TAME_FILE.exists():
 for p in P:
     if TAMES.get(p["name"]):
         tame(p, TAMES[p["name"]])
+
+# the PERFORM knobs act on every preset (v0.1.5; tests/knob_effect.c checks it):
+# - MORPH is timbre, never pitch: sound B keeps sound A's ratios, fine tuning, fixed frequencies and (METAL) the
+#   inharmonic spread; MORPH moves the depths, the routing, the folder and the envelopes
+# - FEEDBACK always has something to scale: OP4 keeps a little self-feedback (64 = as here, quiet; 127 ~ 3.9x, the
+#   hiss is the player's to ask for)
+# - MOVEMENT always moves something: a preset with no LFO target gets the LFO on the folder
+FB_RESIDUAL = 20
+for p in P:
+    a, b = p["a"], p["b"]
+    for k in ("ratio", "fine", "fixed"):
+        b[k] = list(a[k])
+    if p["mode"] == MODES["METAL"]:
+        b["character"] = a["character"]
+    for s in (a, b):
+        s["mat"][15] = max(s["mat"][15], FB_RESIDUAL)
+    if p["mod_int"] == 64 and p["mod_fold"] == 64 and p["mod_pitch"] == 64:
+        p["mod_fold"] = 100
+        p["lfo_rate"] = max(p["lfo_rate"], 45)
+    p["lfo_rate"] = max(p["lfo_rate"], 70 if p["lfo_shape"] == LFO["SH"] else 30)   # (slower than ~1 s a step
+    # reads as a knob that does nothing)
+    # B always further than A: deeper forward FM, more folding, more of the folder in the mix
+    for i in range(16):
+        if i // 4 > i % 4 and a["mat"][i]:
+            b["mat"][i] = max(b["mat"][i], min(127, int(a["mat"][i] * 1.35)))
+    b["fold"] = max(b["fold"], min(127, a["fold"] + 35))
+    b["fmix"] = max(b["fmix"], min(127, a["fmix"] + 20))
 
 # the ARP as it starts (v0.1.4): HOLD on, 8 steps, DENSITY at the top (no rests) in every factory preset; the
 # per-preset DENSITY above is kept nowhere (turn DENSITY down for rests)
