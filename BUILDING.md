@@ -5,7 +5,7 @@
 この開発環境は、同じマシンの他のプロジェクト(Schwung など)から完全に分離しています。
 
 ```
-<作業ディレクトリ>/            (この環境では /home/pepsi/brutal-fm)
+<作業ディレクトリ>/
   brutal-fm/                   このリポジトリ
   toolchain/                   BRUTAL FM 専用のツール (tools/setup_env.sh が作る)
     jieli/toolchain/           JieLi Linux ツールチェーン (pi32v2 用 clang 4.0.1)
