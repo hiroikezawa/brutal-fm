@@ -296,11 +296,11 @@ for p in P:
     brutalize(p)
 
 # the ones the floor leaves too clean (a low note or a bell barely reaches the folder): pushed by hand.
-# Modulators held up (no decay to a pure sine), the folder and the master drive further.
+# Modulators held up (no decay to a pure sine), the folder further (the master drive stays at the floor: past
+# it the saturation pins the level and no GAIN can bring it down).
 HARDER = ("RUST BELL", "IRON BASS", "ACID GROWL", "BIT BASS", "SLUDGE")
 for p in P:
     if p["name"] in HARDER:
-        p["drive"] = max(p["drive"], 80)
         for side in ("a", "b"):
             s = p[side]
             s["fold"] = max(s["fold"], 85 if side == "a" else 115)
@@ -308,6 +308,11 @@ for p in P:
                 s["character"] = max(s["character"], 95 if side == "a" else 120)
             for op in (1, 2, 3):
                 s["sus"][op] = max(s["sus"][op], 90)
+# two basses whose folded GROWL body already saturates: the master drive on top pinned their level above the
+# others whatever their GAIN; their grit is the folder's
+for p in P:
+    if p["name"] in ("IRON BASS", "ACID GROWL"):
+        p["drive"] = 45
 
 # loudness: every sound's GAIN from tests/calibrate.c (CAL=1), so that A, B and the presets match (-15 dBFS RMS
 # over their loudest 50 ms of a held C3, before the limiter). Missing file or name: the gain written above
