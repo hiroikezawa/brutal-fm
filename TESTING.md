@@ -108,7 +108,7 @@ FM-1 用コンパイラーの出力(`tools/target_cost.py build/brutal.dis`):
 85 % を超えたときのボイスの自動停止(Felucca と同じ方式)で破綻は避けますが、音が切れることはあります。
 GLO ページの CPU 表示を見て VOICES / QUALITY を調整してください。
 
-メモリ: アプリ 154 KB(スロット 568 KB)、RAM 12 KB / 72 KB、プール 136 KB / 360 KB(ディレイ 64 KB を含む)。
+メモリ: アプリ 124 KB(v0.1.4、-Os。スロット 568 KB)、RAM 12 KB / 72 KB、プール 136 KB / 360 KB(ディレイ 64 KB を含む)。
 
 ## 音声サンプル
 
