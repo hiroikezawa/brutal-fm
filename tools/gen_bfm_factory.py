@@ -76,7 +76,7 @@ def patch(name, cat, mode, a, b=None, **kw):
          "drift_rate": 30, "mod_int": 64, "mod_fold": 64, "mod_pitch": 64, "mod_morph": 64, "mod_fb": 64,
          "vel_sens": 40, "bend": 2, "glide": 0, "drive": 0, "crush": 0, "dly_time": 60, "dly_fb": 40,
          "dly_mix": 0, "a": a, "b": apply(a, b or {}),
-         "arp": {"on": 0, "hold": 0, "length": 1, "rate": 2, "density": 80, "complexity": 50, "gatevar": 30,
+         "arp": {"on": 0, "hold": 1, "length": 0, "rate": 2, "density": 127, "complexity": 50, "gatevar": 30,
                  "timbrevar": 40, "gate": 60, "window": 20, "locks": 0}}
     for k, v in kw.items():
         if k == "arp":
@@ -116,8 +116,8 @@ P.append(patch("SAW BLADE", "METAL", "METAL",
                lfo_rate=70, mod_fold=96, movement=70))
 P.append(patch("CHAIN DRAG", "METAL", "METAL",
                sound("RING", ("1", "2.72", "5.4", "0.5"), dec=85, sus=70, rel=60, character=40),
-               {"ratios": ("1", "3.14", "6.28", "0.71"), "character": 90}, algo=5, lfo_shape="SH",
-               lfo_rate=78, mod_int=110, movement=90))
+               {"ratios": ("1", "3.14", "6.28", "0.71"), "character": 90}, algo=5, lfo_shape="TRI",
+               lfo_rate=28, mod_int=88, movement=70))   # (v0.1.3: a fast S&H on the FM depth was a fizz)
 P.append(patch("GONG PIT", "METAL", "METAL",
                sound("TRIPLE", ("0.5", "1.41", "2.72", "3.14"), atk={0: 6}, sus=0, dec=110, rel=110,
                      character=35),
@@ -313,6 +313,58 @@ for p in P:
 for p in P:
     if p["name"] in ("IRON BASS", "ACID GROWL"):
         p["drive"] = 45
+
+# hiss budget (v0.1.4): grit yes, fizz no. tools/tune_hiss.py finds per preset the smallest TAME step (0 .. 30)
+# at which its render keeps <= -20 dB above 16 kHz and a spectral flatness <= 0.30 (tests/render.c), and writes
+# tools/factory_tame.txt. Steps 1..10 take the noise sources away (feedback, self-feedback and the edges that close
+# a loop, the CHAOS amount,
+# the LFO's FM depth, half the FM depth above neutral); 11..20 then soften the folder; 21..30 bring the FM depth
+# and the METAL spread to neutral and halve the folder's mix. NOISE-mode presets are noise by
+# design and are left alone.
+TAME_FILE = Path(__file__).resolve().parent / "factory_tame.txt"
+
+
+def toward(v, centre, f):
+    return int(round(centre + (v - centre) * f))
+
+
+def tame(p, t):
+    f = max(0.0, 1.0 - min(t, 10) / 10.0)          # 1..10: the noise sources, 1 .. 0
+    g = 1.0 - min(10, max(0, t - 10)) / 10.0 * 0.6  # 11..20: the folder, 1 .. 0.4
+    h = 1.0 - min(10, max(0, t - 20)) / 10.0        # 21..30: the FM depth and METAL spread above neutral, 1 .. 0
+    for k in ("feedback", "mod_fb", "mod_int"):
+        if p[k] > 64:
+            p[k] = toward(p[k], 64, f)
+    if p["intensity"] > 64:
+        p["intensity"] = toward(p["intensity"], 64, (0.5 + 0.5 * f) * h)
+    for side in ("a", "b"):
+        s = p[side]
+        for a in range(4):
+            for b in range(4):
+                if a <= b:                          # self-feedback and the edges that close a loop (src < dst)
+                    s["mat"][a * 4 + b] = int(round(s["mat"][a * 4 + b] * f))
+        if p["mode"] == MODES["CHAOS"]:
+            s["character"] = int(round(s["character"] * f))
+        elif p["mode"] == MODES["METAL"]:
+            s["character"] = int(round(s["character"] * h))
+        s["fold"] = int(round(s["fold"] * g))
+        s["fmix"] = int(round(s["fmix"] * (0.5 + 0.5 * h)))
+
+
+TAMES = {}
+if TAME_FILE.exists():
+    for line in TAME_FILE.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            n, t = line.split("|")
+            TAMES[n] = int(t)
+for p in P:
+    if TAMES.get(p["name"]):
+        tame(p, TAMES[p["name"]])
+
+# the ARP as it starts (v0.1.4): HOLD on, 8 steps, DENSITY at the top (no rests) in every factory preset; the
+# per-preset DENSITY above is kept nowhere (turn DENSITY down for rests)
+for p in P:
+    p["arp"].update(hold=1, length=0, density=127)
 
 # loudness: every sound's GAIN from tests/calibrate.c (CAL=1), so that A, B and the presets match (-15 dBFS RMS
 # over their loudest 50 ms of a held C3, before the limiter). Missing file or name: the gain written above

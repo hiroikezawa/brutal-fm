@@ -160,8 +160,10 @@ int main(int argc, char **argv)
     sim_boot();
     ui_preset_load(0);
     run_ms(50);
+    ui_page_to(5);
     tap(B_PLAY);
-    CHECK(bfm_p.arp.on, "PLAY: ARP on");
+    CHECK(bfm_p.arp.on && ui.page == 0, "PLAY: ARP on, and the knobs go to the sound (PERFORM)");
+    CHECK(bfm_p.arp.hold && !bfm_p.arp.length && bfm_p.arp.density == 127, "as it starts: HOLD on, 8 steps, no rests");
     sim_key(7, 1);                                         /* C4 */
     sim_key(11, 1);                                        /* E4 */
     sim_key(14, 1);                                        /* G4 */
@@ -175,12 +177,18 @@ int main(int argc, char **argv)
             all &= ui_led[i] != LED_OFF;
         CHECK(all, "every button and key glows at least (findable on a dark stage)");
     }
-    sim_button(B_ARP, 1);
-    run_ms(30);
-    tap(B_FX);
-    sim_button(B_ARP, 0);
-    run_ms(30);
-    CHECK(bfm_p.arp.hold && PAGES[ui.page].group != G_ARP, "ARP held + FX: HOLD on (no page change)");
+    {
+        int i, got[2];
+        for (i = 0; i < 2; i++) {               /* HOLD starts on: ARP + FX takes it off, and puts it back */
+            sim_button(B_ARP, 1);
+            run_ms(30);
+            tap(B_FX);
+            sim_button(B_ARP, 0);
+            run_ms(30);
+            got[i] = bfm_p.arp.hold;
+        }
+        CHECK(!got[0] && got[1] && PAGES[ui.page].group != G_ARP, "ARP held + FX: HOLD off, on again (no page change)");
+    }
     sim_key(7, 0); sim_key(11, 0); sim_key(14, 0);
     run_ms(300);
     CHECK(sq.playing, "HOLD: the keys let go, it plays on");

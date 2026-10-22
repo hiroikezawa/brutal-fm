@@ -23,7 +23,7 @@ enum { EN_SELECT, EN_ALGO, EN_PRESET, EN_K1, EN_K2, EN_K3, EN_K4, NE };
 #define NPRESETS (BFM_NFACTORY + BFM_USER)
 
 #ifndef BFM_VERSION
-#define BFM_VERSION "v0.1.3"
+#define BFM_VERSION "v0.1.4"
 #endif
 
 /* ---------------------------------------------------------- parameters --- */
@@ -831,6 +831,8 @@ static void ui_button(uint32_t b, uint32_t down)
         break;
     case B_PLAY:
         prm_set(P_TLOCK + 2, !bfm_p.arp.on);
+        if (bfm_p.arp.on)
+            ui_page_to(0);              /* the ARP plays: the knobs shape the sound (PERFORM: MORPH, FM, ...) */
         ui_popup("ARP", bfm_p.arp.on ? "ON" : "OFF");
         break;
     case B_REC:

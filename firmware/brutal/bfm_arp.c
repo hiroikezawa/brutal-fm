@@ -126,6 +126,9 @@ static void ar_rhythm(ar_ctx_t *c, bfm_pattern_t *p)
             i = weakest;
         }
     }
+    if (c->dens >= 127u)                                    /* DENSITY at its top: no rests, every step plays */
+        for (i = 0; i < c->len; i++)
+            on[i] = 1;
     for (i = 0, nhit = 0; i < c->len; i++)
         nhit += on[i];
     if (!nhit)

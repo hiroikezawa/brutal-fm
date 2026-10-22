@@ -178,7 +178,7 @@ static void test_generator(void)
                 n_rep &= (p.st[k].flags & ST_ON) == (p.st[k + 4u].flags & ST_ON) ||
                          (p.st[k].flags & ST_ON) == (p.st[k + 8u].flags & ST_ON);
             rep += n_rep;
-            a.density = 120; a.complexity = 60;
+            a.density = 120; a.complexity = 60;          /* (127 = no rests at all: its own check) */
             bfm_generate(&p, pool, np, 16, &a, s, 0, 0);
             for (k = 0, h = 0; k < 16u; k++)
                 h += (p.st[k].flags & ST_ON) != 0u;
@@ -186,6 +186,20 @@ static void test_generator(void)
         }
         CHECK(hi > lo * 2u, "DENSITY: low %.1f hits / 16, high %.1f", lo / 200.0, hi / 200.0);
         CHECK(rep > 150u, "low COMPLEXITY: a 4-step motif repeats (%u / 200)", rep);
+        {
+            uint32_t full = 0, len;
+            a.density = 127;
+            for (s = 1; s <= 100u; s++)
+                for (len = 8; len <= 16u; len += 8u) {
+                    uint32_t k, h = 0;
+                    a.complexity = (uint8_t)(s * 37u % 128u);
+                    bfm_generate(&p, pool, np, len, &a, s, 0, 0);
+                    for (k = 0; k < len; k++)
+                        h += (p.st[k].flags & ST_ON) != 0u;
+                    full += h == len;
+                }
+            CHECK(full == 200u, "DENSITY 127: no rests, every step plays (%u / 200 patterns)", full);
+        }
     }
 }
 

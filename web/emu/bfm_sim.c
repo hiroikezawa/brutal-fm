@@ -23,7 +23,7 @@
 #define BFM_POOL_SECTION
 #define BFM_FLASH 1
 #ifndef BFM_VERSION
-#define BFM_VERSION "v0.1.3"
+#define BFM_VERSION "v0.1.4"
 #endif
 
 /* ------------------------------------------------------------- screen --- */

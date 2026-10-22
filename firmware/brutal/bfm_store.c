@@ -10,7 +10,7 @@
 #define BFM_USER 32u
 #define BANK_MAGIC 0x4B4E4142u           /* "BANK" */
 #define BANK_VERSION 1u
-#define LAST_MAGIC 0x5453414Cu           /* "LAST" */
+#define LAST_MAGIC 0x3254534Cu           /* "LST2" (v0.1.4: the session before it held the old ARP defaults and is dropped once) */
 typedef struct {
     uint32_t magic;
     uint16_t version, size;
